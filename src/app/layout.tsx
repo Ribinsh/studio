@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'CourtSide Chronicle', // Update title
+  title: 'NBT Inter Shakha Volleyball Tournament', // Update title
   description: 'Live Volleyball Tournament Scores and Standings', // Update description
 };
 

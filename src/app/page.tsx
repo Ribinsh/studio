@@ -2,7 +2,7 @@
 "use client";
 
 import type { LiveMatchScoreData } from '@/lib/types'; // Use type from lib
-import React, { useState, useCallback, useContext } from 'react';
+import React, { useState, useCallback, useContext, useEffect } from 'react'; // Added useEffect and useCallback
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, AlertCircleIcon, Wrench } from 'lucide-react';
@@ -19,7 +19,6 @@ export default function Home() {
 
   const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false);
   const [isStandingsModalOpen, setIsStandingsModalOpen] = useState(false);
-  // Remove states related to fetching: isLoadingLive, isLoadingStandings, errorLive, errorStandings
 
   const handleTimeoutClick = () => {
      setIsTimeoutModalOpen(true);
@@ -27,7 +26,6 @@ export default function Home() {
 
   const handleShowStandingsClick = () => {
     setIsStandingsModalOpen(true);
-    // No need to fetch here, data comes from context
   };
 
   const handleTimeoutClose = useCallback(() => {
@@ -60,11 +58,17 @@ export default function Home() {
     <div className="min-h-screen bg-background p-4 md:p-8 flex flex-col">
        <header className="mb-6 flex justify-between items-center text-center px-4">
          <div></div> {/* Spacer */}
-         <div>
-           <h1 className="text-4xl font-bold text-primary mb-2">CourtSide Chronicle</h1>
-            <Badge variant={badgeVariant} className={`${badgeVariant === 'destructive' ? 'animate-pulse' : ''} text-lg px-4 py-1`}>
+         <div className="flex flex-col items-center">
+           <div className="flex items-center justify-center gap-3">
+               {/* Volleyball SVG Icon */}
+               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-primary">
+                 <path fillRule="evenodd" d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2ZM9.877 4.623A8.003 8.003 0 0 1 12 4c.85 0 1.67.13 2.44.375-.74.158-1.434.402-2.05.73a9.44 9.44 0 0 0-2.377 1.125 10.905 10.905 0 0 1 1.864-1.607Zm-2.072 2.24A10.9 10.9 0 0 0 6.198 8.5H4.75a9.986 9.986 0 0 1 .346-1.989 11.046 11.046 0 0 0 2.709.352Zm.773 3.637a9.43 9.43 0 0 1-.476 2.238 10.88 10.88 0 0 1-.156 2.367 10.9 10.9 0 0 1 2.056-.835 9.44 9.44 0 0 0 2.377-1.125 9.43 9.43 0 0 0 1.417-1.645 10.9 10.9 0 0 0-.526-2.238 10.88 10.88 0 0 0 .156-2.367A10.9 10.9 0 0 0 12.8 7.665a9.44 9.44 0 0 1-2.377 1.125 9.43 9.43 0 0 1-1.838 1.709Zm5.185-1.71A10.9 10.9 0 0 1 14.8 7.665a9.44 9.44 0 0 0 2.377-1.125 9.43 9.43 0 0 0 1.645-1.417 10.9 10.9 0 0 0 .526 2.238 10.88 10.88 0 0 0-.156 2.367 10.9 10.9 0 0 1-2.056.835 9.44 9.44 0 0 1-2.377 1.125 9.43 9.43 0 0 1 .215-.584Zm1.112 4.348a10.9 10.9 0 0 0 2.056-.835 9.44 9.44 0 0 1 1.125 2.377 9.43 9.43 0 0 1 .73 2.05A8.003 8.003 0 0 1 12 20a8.003 8.003 0 0 1-2.44-.375c.74-.158 1.434-.402 2.05-.73a9.44 9.44 0 0 0 2.377-1.125 10.905 10.905 0 0 1-1.864 1.607ZM17.802 15.5H19.25c.217.66.346 1.343.346 2.039 0 .85-.13 1.67-.375 2.44-.158-.74-.402-1.434-.73-2.05a9.44 9.44 0 0 0-1.125-2.377 10.905 10.905 0 0 1 1.607 1.864Zm-7.019 1.864a10.905 10.905 0 0 0 1.607 1.864 9.44 9.44 0 0 1-2.377 1.125c-.616.328-1.31.572-2.05.73A8.003 8.003 0 0 1 4 12c0-.85.13-1.67.375-2.44.158.74.402 1.434.73 2.05a9.44 9.44 0 0 0 1.125 2.377 10.905 10.905 0 0 0 1.864-1.607 10.9 10.9 0 0 1-.835-2.056 9.44 9.44 0 0 0-1.125-2.377 9.43 9.43 0 0 0-1.417 1.645A10.9 10.9 0 0 0 4.75 15.5h1.448c.217.66.346 1.343.346 2.039 0 .17-.007.338-.02.504a10.88 10.88 0 0 1 1.838-1.709 9.43 9.43 0 0 1 2.238.476Z" clipRule="evenodd" />
+               </svg>
+              <h1 className="text-3xl md:text-4xl font-bold text-primary">NBT Inter Shakha Volleyball Tournament</h1>
+           </div>
+           <Badge variant={badgeVariant} className={`${badgeVariant === 'destructive' ? 'animate-pulse' : ''} text-lg px-4 py-1 mt-2`}>
                 {liveBadgeText}
-            </Badge>
+           </Badge>
          </div>
           {/* Admin Link */}
           <Link href="/admin">
@@ -129,7 +133,7 @@ export default function Home() {
       />
 
       <footer className="mt-8 text-center text-sm text-muted-foreground">
-        <p>&copy; {new Date().getFullYear()} CourtSide Chronicle. All rights reserved.</p>
+        <p>&copy; {new Date().getFullYear()} NBT Inter Shakha Volleyball Tournament. All rights reserved.</p>
       </footer>
     </div>
   );
