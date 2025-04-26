@@ -108,14 +108,14 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
          <div className={cn(
                 `text-6xl md:text-8xl font-bold transition-transform duration-300 ease-out`,
                 team1LeadsPoints ? 'text-primary' : 'text-foreground/80', // Use primary color for leading team
-                animateScore1 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class (keep accent for animation bump)
+                animateScore1 ? 'scale-125' : 'scale-100' // Apply animation class, remove accent color
               )}>
           {team1CurrentPoints}
         </div>
          <div className={cn(
                `text-6xl md:text-8xl font-bold transition-transform duration-300 ease-out`,
                 team2LeadsPoints ? 'text-primary' : 'text-foreground/80', // Use primary color for leading team
-                animateScore2 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class (keep accent for animation bump)
+                animateScore2 ? 'scale-125' : 'scale-100' // Apply animation class, remove accent color
               )}>
           {team2CurrentPoints}
         </div>
