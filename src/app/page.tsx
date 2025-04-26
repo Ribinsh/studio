@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import type { LiveMatchScoreData } from '@/services/google-sheets';
@@ -25,6 +26,8 @@ export default function Home() {
 
   // Combined fetch function
   const fetchData = useCallback(async () => {
+    console.log("fetchData triggered..."); // Log start of fetch
+
     // Reset loading/error states for live score
     setIsLoadingLive(true);
     setErrorLive(null);
@@ -34,64 +37,80 @@ export default function Home() {
       setErrorStandings(null);
     }
 
-    // Fetch Live Score
+    // --- Fetch Live Score ---
     try {
       // Use environment variable or the provided URL. Assuming gid=0 for the live score sheet.
-      const liveScoreSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0';
-      const liveScoreBaseUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID
-        ? `https://docs.google.com/spreadsheets/d/${process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID}/export?format=csv&gid=${liveScoreSheetId}`
-        : `https://docs.google.com/spreadsheets/d/13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU/export?format=csv&gid=${liveScoreSheetId}`; // Use provided URL as fallback
+      const liveScoreSheetGid = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0';
+      const liveScoreDocId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
+      // Fallback to the user-provided URL ONLY if the env var isn't set.
+      // Make sure the user-provided URL is passed correctly or configure env var.
+      const liveScoreBaseUrl = liveScoreDocId
+        ? `https://docs.google.com/spreadsheets/d/${liveScoreDocId}/export?format=csv&gid=${liveScoreSheetGid}`
+        : 'https://docs.google.com/spreadsheets/d/13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU/export?format=csv&gid=0'; // Defaulting to user's link if env var missing
 
-      console.log("Fetching live score from:", liveScoreBaseUrl); // Log the URL being fetched
+      console.log("Attempting to fetch live score from:", liveScoreBaseUrl); // Log the URL being fetched
       const liveData = await getLiveScoreDataFromSheets(liveScoreBaseUrl);
-      setLiveMatch(liveData); // liveData can be null if fetch fails or no live match
-       if (!liveData) {
-           // Optionally set an error or keep it null to show "No match live"
-           // setErrorLive("Could not retrieve live match data.");
-           console.log("No live match data returned from fetch.");
-       }
+
+      if (liveData) {
+         console.log("Successfully fetched live data:", liveData);
+         setLiveMatch(liveData);
+      } else {
+         console.log("Fetch returned null or empty data for live score.");
+         setLiveMatch(null); // Ensure state is null if no data
+         // Optional: Set a specific message instead of generic error if null is expected (e.g., no match running)
+         // setErrorLive("No match currently live or data unavailable.");
+      }
     } catch (err: any) {
-      setErrorLive(`Failed to fetch live score: ${err.message || 'Unknown error'}`);
-      console.error("Live Score Fetch Error:", err);
+      console.error("Error fetching live score data:", err);
+      setErrorLive(`Failed to fetch live score: ${err.message || 'Unknown error'}. Check sheet access or format.`);
       setLiveMatch(null); // Set to null on error
     } finally {
+       console.log("Finished live score fetch attempt.");
        setIsLoadingLive(false);
     }
 
 
-    // Fetch Standings (can happen concurrently or deferred until modal opens)
-    // Fetching standings here to have them ready
-    if (!isStandingsModalOpen) { // Avoid refetching if modal is already open and potentially showing data
+    // --- Fetch Standings ---
+    // Fetching standings here to have them ready, unless modal is open
+    if (!isStandingsModalOpen) { // Avoid refetching if modal is already open
+        setIsLoadingStandings(true); // Ensure loading state is true before fetch
+        setErrorStandings(null); // Clear previous errors
+
         try {
             // Use environment variable or a placeholder STANDINGS URL. Ensure this is configured.
             const standingsSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_STANDINGS_GID || 'YOUR_STANDINGS_GID_HERE'; // Need GID for standings sheet
             const standingsDocId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_STANDINGS_DOC_ID || 'YOUR_STANDINGS_DOC_ID_HERE'; // Need Doc ID for standings
-            const standingsUrl = standingsDocId !== 'YOUR_STANDINGS_DOC_ID_HERE'
+            const standingsUrl = standingsDocId !== 'YOUR_STANDINGS_DOC_ID_HERE' && standingsSheetId !== 'YOUR_STANDINGS_GID_HERE'
               ? `https://docs.google.com/spreadsheets/d/${standingsDocId}/export?format=csv&gid=${standingsSheetId}`
               : 'YOUR_STANDINGS_SHEETS_URL_HERE'; // Placeholder if env vars not set
 
 
-            // console.log("Fetching standings from:", standingsUrl); // Log the URL being fetched
-            const standingsData = await getStandingsDataFromSheets(standingsUrl); // This will use mock data if URL is placeholder
-            setStandings(standingsData); // standingsData can be null
-             if (!standingsData && standingsUrl !== 'YOUR_STANDINGS_SHEETS_URL_HERE') {
-                 setErrorStandings("Could not retrieve standings data.");
-                 console.log("No standings data returned from fetch.");
-             } else if (!standingsData) {
-                 console.log("Using mock standings data as URL is not configured.");
-                 // Set mock data explicitly if needed, although getStandingsDataFromSheets might already do it
-                 setStandings(getMockStandingsData());
+             console.log("Attempting to fetch standings from:", standingsUrl); // Log the URL being fetched
+             const standingsData = await getStandingsDataFromSheets(standingsUrl); // This uses mock data if URL is placeholder
+
+             if (standingsData) {
+                console.log("Successfully fetched standings data (or using mock):", standingsData);
+                setStandings(standingsData);
+             } else if (standingsUrl === 'YOUR_STANDINGS_SHEETS_URL_HERE') {
+                 console.log("Standings URL not configured, using mock data.");
+                 setStandings(getMockStandingsData()); // Explicitly set mock data
+             } else {
+                 console.log("Fetch returned null or empty data for standings.");
+                 setErrorStandings("Could not retrieve standings data. Using mock data as fallback.");
+                 setStandings(getMockStandingsData()); // Fallback to mock data
              }
         } catch (err: any) {
-            setErrorStandings(`Failed to fetch standings: ${err.message || 'Unknown error'}`);
-            console.error("Standings Fetch Error:", err);
+            console.error("Error fetching standings data:", err);
+            setErrorStandings(`Failed to fetch standings: ${err.message || 'Unknown error'}. Using mock data.`);
             setStandings(getMockStandingsData()); // Fallback to mock data on error
         } finally {
+            console.log("Finished standings fetch attempt.");
             setIsLoadingStandings(false);
         }
     } else {
-        // If modal is open, don't change loading state unless you specifically want to indicate a background refresh
-        setIsLoadingStandings(false);
+        // If modal is open, don't change loading state unless indicating background refresh
+        console.log("Standings modal is open, skipping standings fetch.");
+        setIsLoadingStandings(false); // Ensure loading is false if skipped
     }
 
   }, [isStandingsModalOpen]); // Depend on isStandingsModalOpen to potentially skip standings fetch
@@ -110,24 +129,52 @@ export default function Home() {
   const handleShowStandingsClick = () => {
     setIsStandingsModalOpen(true);
     // Optionally trigger a standings fetch here if not done periodically
-    // if (!standings && !isLoadingStandings && !errorStandings) {
-    //   fetchData(); // Refetch all data, or create a separate fetchStandings function
-    // }
+    // and if data isn't already loaded or loading.
+    if (!standings && !isLoadingStandings && !errorStandings) {
+        console.log("Standings button clicked, triggering fetch...");
+        // Trigger fetch explicitly if needed (or rely on interval)
+        // fetchData(); // Consider if needed or if interval is sufficient
+    } else {
+        console.log("Standings button clicked, modal opening with existing data/state.");
+    }
   };
 
   const handleTimeoutClose = useCallback(() => {
     setIsTimeoutModalOpen(false);
   }, []);
 
-   const liveBadgeText = liveMatch?.status?.toLowerCase() === 'live' ? `LIVE MATCH: ${liveMatch.team1} vs ${liveMatch.team2}` : (liveMatch ? `MATCH STATUS: ${liveMatch.status || 'Info'}` : 'No Live Match Data');
+   // Determine badge text and variant based on loading, error, or live match data
+   let liveBadgeText = 'Checking Live Status...';
+   let badgeVariant: "secondary" | "destructive" | "default" = "secondary"; // Default to secondary
+
+   if (isLoadingLive) {
+       liveBadgeText = 'Loading Live Score...';
+       badgeVariant = "secondary";
+   } else if (errorLive && !liveMatch) { // Show error only if fetch failed AND we have no stale data
+       liveBadgeText = 'Error Loading Live Score';
+       badgeVariant = "destructive";
+   } else if (liveMatch) {
+        // Check status first, default to 'Live' interpretation if status is missing but data is present
+        const statusLower = liveMatch.status?.toLowerCase() || 'live';
+        if (statusLower === 'live' || statusLower === '') { // Treat empty status as live if data exists
+             liveBadgeText = `LIVE MATCH: ${liveMatch.team1} vs ${liveMatch.team2}`;
+             badgeVariant = "destructive"; // Use destructive (red) for live
+        } else {
+             liveBadgeText = `MATCH STATUS: ${liveMatch.status}`;
+             badgeVariant = "default"; // Use default (blue) for other statuses like Timeout, Finished Set
+        }
+   } else {
+        // Not loading, no error, but no live match data after fetch
+        liveBadgeText = 'No Match Currently Live';
+        badgeVariant = "secondary";
+   }
 
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 flex flex-col">
       <header className="mb-6 text-center">
         <h1 className="text-4xl font-bold text-primary mb-2">CourtSide Chronicle</h1>
-         {/* Adjust badge display based on liveMatch presence */}
-         <Badge variant={liveMatch?.status?.toLowerCase() === 'live' ? "destructive" : "secondary"} className={`${liveMatch?.status?.toLowerCase() === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-blue-500 text-white'} text-lg px-4 py-1`}>
+         <Badge variant={badgeVariant} className={`${badgeVariant === 'destructive' ? 'animate-pulse' : ''} text-lg px-4 py-1`}>
              {liveBadgeText}
          </Badge>
       </header>
@@ -140,8 +187,7 @@ export default function Home() {
                 <LoaderIcon className="h-12 w-12 animate-spin text-primary" />
                 <p className="ml-4 text-xl text-muted-foreground">Loading Live Score...</p>
               </div>
-            ) : errorLive ? (
-                // Display error message, but still try to render LiveMatchDisplay which handles null
+            ) : errorLive && !liveMatch ? ( // Show specific error message ONLY if loading finished, error exists, AND liveMatch is still null
                 <div className="flex flex-col items-center justify-center h-60 text-center text-destructive p-4 border border-destructive rounded-md">
                     <AlertCircleIcon className="h-12 w-12 mb-4" />
                     <p className="text-lg font-semibold">{errorLive}</p>
@@ -149,7 +195,8 @@ export default function Home() {
                     <LiveMatchDisplay liveMatch={null} />
                 </div>
             ) : (
-               // Render LiveMatchDisplay, it handles the case where liveMatch is null internally
+               // Render LiveMatchDisplay. It handles the case where liveMatch is null (show "No match live").
+               // If there was an error but we still have OLD liveMatch data, we might show that stale data here until the next successful fetch.
               <LiveMatchDisplay liveMatch={liveMatch} />
             )}
           </CardContent>
@@ -180,7 +227,7 @@ export default function Home() {
 
          {/* Display Standings Error if applicable and modal is closed */}
          {errorStandings && !isStandingsModalOpen && (
-             <p className="text-xs text-destructive mt-2 text-center">{errorStandings}. Showing mock data.</p>
+             <p className="text-xs text-destructive mt-2 text-center">{errorStandings}</p>
          )}
 
       </main>

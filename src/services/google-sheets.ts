@@ -42,15 +42,16 @@ export interface LiveMatchScoreData {
 
 /**
  * Parses CSV text data from Google Sheets into LiveMatchScoreData.
- * Expects 3 rows: Header, Team 1 Data, Team 2 Data.
+ * Expects 3 rows minimum: Header, Team 1 Data, Team 2 Data.
+ * Will gracefully handle fewer rows by returning null.
  * Columns expected: Team, Set Score, Current Points, Status
  * @param csvText The raw CSV text.
- * @returns LiveMatchScoreData object or null if parsing fails.
+ * @returns LiveMatchScoreData object or null if parsing fails or data is insufficient.
  */
 function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
     console.log("Attempting to parse CSV:", csvText);
-    if (!csvText) {
-        console.error("parseLiveScoreCsv received empty csvText.");
+    if (!csvText || typeof csvText !== 'string') {
+        console.error("parseLiveScoreCsv received invalid or empty csvText.");
         return null;
     }
 
@@ -65,27 +66,33 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
 
     // Check if we have at least the header and two team rows
     if (lines.length < 3) {
-        console.error(`Live score CSV has only ${lines.length} non-empty lines. Expected at least 3 (Header + 2 Teams).`);
-        return null;
+        console.warn(`Live score CSV has only ${lines.length} non-empty lines. Expected at least 3 (Header + 2 Teams). Assuming no match data.`);
+        return null; // Not enough data for a match score
     }
 
     // Basic CSV parsing (split by comma, trim whitespace from cells)
     // Handle potential commas within quoted strings if necessary, though unlikely for this data
-    const parseLine = (line: string): string[] => line.split(',').map(cell => cell.trim());
+    const parseLine = (line: string): string[] => line.split(',').map(cell => cell.trim().replace(/^"(.*)"$/, '$1')); // Handle potential quotes
 
-    // Use only the first 3 lines (Header, Team1, Team2) even if more exist
     const header = parseLine(lines[0]);
-    const team1Data = parseLine(lines[1]);
-    const team2Data = parseLine(lines[2]);
+    // Defensive: ensure team1Data and team2Data actually exist
+    const team1Data = lines.length > 1 ? parseLine(lines[1]) : null;
+    const team2Data = lines.length > 2 ? parseLine(lines[2]) : null;
 
     console.log("CSV Header:", header);
     console.log("Team 1 Data:", team1Data);
     console.log("Team 2 Data:", team2Data);
 
+    // If team data is missing after header, return null
+    if (!team1Data || !team2Data) {
+      console.error("Missing team data rows after header in live score CSV.");
+      return null;
+    }
+
     // Find column indices (case-insensitive matching)
     const findIndex = (colName: string) => {
         const index = header.findIndex(h => h.toLowerCase().trim() === colName.toLowerCase().trim());
-        if(index === -1) console.warn(`Column "${colName}" not found in header.`);
+        if(index === -1) console.warn(`Column "${colName}" not found in header:`, header);
         return index;
     }
 
@@ -95,26 +102,34 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
     const currentPointsColIndex = findIndex("Current Points");
     const statusColIndex = findIndex("Status"); // Optional
 
-    // Validate required columns exist
+    // Validate required columns exist in header
     if (teamColIndex === -1 || setScoreColIndex === -1 || currentPointsColIndex === -1) {
         console.error("Missing required columns (Team, Set Score, Current Points) in live score CSV header:", header);
         return null;
     }
+     // Validate team rows have enough columns based on required indices
      if (team1Data.length <= Math.max(teamColIndex, setScoreColIndex, currentPointsColIndex) ||
          team2Data.length <= Math.max(teamColIndex, setScoreColIndex, currentPointsColIndex)) {
-         console.error("Team data rows do not have enough columns based on header indices.");
+         console.error("Team data rows do not have enough columns based on header indices.", { team1DataLength: team1Data.length, team2DataLength: team2Data.length, maxIndex: Math.max(teamColIndex, setScoreColIndex, currentPointsColIndex) });
          return null;
      }
 
 
     try {
+        // Ensure data exists at indices before accessing
         const team1 = team1Data[teamColIndex];
         const team2 = team2Data[teamColIndex];
-        // Use || '0' as fallback for parseInt if cell is empty, although score should always be present
-        const team1SetScore = parseInt(team1Data[setScoreColIndex] || '0', 10);
-        const team2SetScore = parseInt(team2Data[setScoreColIndex] || '0', 10);
-        const team1CurrentPoints = parseInt(team1Data[currentPointsColIndex] || '0', 10);
-        const team2CurrentPoints = parseInt(team2Data[currentPointsColIndex] || '0', 10);
+        const team1SetScoreStr = team1Data[setScoreColIndex];
+        const team2SetScoreStr = team2Data[setScoreColIndex];
+        const team1CurrentPointsStr = team1Data[currentPointsColIndex];
+        const team2CurrentPointsStr = team2Data[currentPointsColIndex];
+
+        // Use || '0' as fallback for parseInt if cell is empty or undefined
+        const team1SetScore = parseInt(team1SetScoreStr || '0', 10);
+        const team2SetScore = parseInt(team2SetScoreStr || '0', 10);
+        const team1CurrentPoints = parseInt(team1CurrentPointsStr || '0', 10);
+        const team2CurrentPoints = parseInt(team2CurrentPointsStr || '0', 10);
+
         // Status is optional. Check index and if data exists. Might be on either row.
         // Prioritize Team 1 status row, then Team 2, then default.
         let status = 'Live'; // Default status
@@ -129,7 +144,7 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
 
         // Basic validation
         if (isNaN(team1SetScore) || isNaN(team2SetScore) || isNaN(team1CurrentPoints) || isNaN(team2CurrentPoints)) {
-            console.error("Non-numeric score/points found in live score CSV. Parsed values:", { team1SetScore, team2SetScore, team1CurrentPoints, team2CurrentPoints });
+            console.error("Non-numeric score/points found in live score CSV. Parsed values:", { team1SetScoreStr, team2SetScoreStr, team1CurrentPointsStr, team2CurrentPointsStr });
             return null;
         }
         if (!team1 || !team2) {
@@ -167,28 +182,34 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
 export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: string): Promise<LiveMatchScoreData | null> {
 
   // Define the specific valid URL identifier expected
-  const validUrlIdentifier = '13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU';
+   const validDocId = '13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU'; // User provided ID
+   const liveScoreSheetGid = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0'; // Default to GID 0 if not set
+   const liveScoreDocIdFromEnv = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
 
-  // Check if the URL is missing, a placeholder, or doesn't contain the expected identifier
-  // Also check environment variables
-  const liveScoreSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0';
-  const liveScoreDocId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
-  const liveScoreBaseUrl = liveScoreDocId
-      ? `https://docs.google.com/spreadsheets/d/${liveScoreDocId}/export?format=csv&gid=${liveScoreSheetId}`
-      : googleSheetsLiveScoreUrl; // Fallback to the directly provided URL
+   let effectiveUrl: string;
 
+   if (liveScoreDocIdFromEnv && liveScoreDocIdFromEnv !== 'YOUR_DOC_ID_HERE') {
+       // Use environment variable if set and valid
+       effectiveUrl = `https://docs.google.com/spreadsheets/d/${liveScoreDocIdFromEnv}/export?format=csv&gid=${liveScoreSheetGid}`;
+       console.log("Using Google Sheet URL from environment variables:", effectiveUrl);
+   } else if (googleSheetsLiveScoreUrl && googleSheetsLiveScoreUrl.includes(validDocId)) {
+        // Use the provided URL if it contains the expected document ID
+        // Extract GID if present, otherwise default
+        const urlParams = new URLSearchParams(googleSheetsLiveScoreUrl.split('?')[1]);
+        const gid = urlParams.get('gid') || liveScoreSheetGid;
+        effectiveUrl = `https://docs.google.com/spreadsheets/d/${validDocId}/export?format=csv&gid=${gid}`;
+        console.log("Using user-provided Google Sheet URL:", effectiveUrl);
+    } else {
+        // If neither env var nor valid provided URL is available
+        console.warn("Invalid or placeholder Google Sheets URL for live score. No valid Doc ID found in environment or provided URL:", googleSheetsLiveScoreUrl);
+        console.log("Will NOT attempt to fetch. Returning null.");
+        // Return null, don't attempt fetch or use mock data
+        return null;
+    }
 
-  if (!liveScoreBaseUrl || liveScoreBaseUrl.includes('EXAMPLE') || liveScoreBaseUrl.includes('YOUR_')) {
-    console.warn("Invalid or placeholder Google Sheets URL for live score provided:", liveScoreBaseUrl);
-    console.log("Returning MOCK live score data instead.");
-    // Return mock data ONLY if the URL is clearly invalid/placeholder
-     return getMockLiveScoreData();
-     // If you want NO data when the URL is wrong, return null:
-     // return null;
-  }
 
    // Add cache-busting query parameter
-   const urlWithCacheBuster = `${liveScoreBaseUrl}&_=${new Date().getTime()}`;
+   const urlWithCacheBuster = `${effectiveUrl}&_=${new Date().getTime()}`;
 
 
   try {
@@ -197,10 +218,10 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
           method: 'GET',
           cache: 'no-store', // Ensure fresh data is fetched
           headers: {
-              // Add any necessary headers here, though usually not needed for public CSV export
               'Cache-Control': 'no-cache',
               'Pragma': 'no-cache'
           },
+          // Add timeout? Consider using AbortController if fetch takes too long
       });
 
       console.log(`Fetch response status: ${response.status}`); // Log status
@@ -210,7 +231,6 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
            const errorText = await response.text(); // Try to get error text from response
            console.error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}. Response body: ${errorText}`);
            // Do not fall back to mock data here, signal the error properly
-           // throw new Error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}`);
            return null; // Indicate fetch failure
       }
 
@@ -225,7 +245,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
       const parsedData = parseLiveScoreCsv(csvText);
 
       if (!parsedData) {
-          console.error("Failed to parse live score CSV data after fetch.");
+          console.error("Failed to parse live score CSV data after fetch. Check CSV format and parser logic.");
           // Parsing failed, return null, don't use mock data
           return null;
       }
@@ -234,6 +254,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
       return parsedData;
 
   } catch (error: any) {
+      // Catch network errors or other exceptions during fetch/parsing
       console.error("Error in getLiveScoreDataFromSheets:", error.message || error);
       // Don't fallback to mock data on generic errors, return null
       return null;
@@ -256,14 +277,14 @@ export async function getStandingsDataFromSheets(googleSheetsStandingsUrl: strin
     // Ensure columns match the TeamStanding interface (Name, MP, W, L, Pts, BP).
     // Handle errors and return null if fetching/parsing fails.
 
-     if (!googleSheetsStandingsUrl || googleSheetsStandingsUrl === 'YOUR_STANDINGS_SHEETS_URL_HERE' || googleSheetsStandingsUrl.includes('YOUR_STANDINGS_DOC_ID_HERE')) {
+     if (!googleSheetsStandingsUrl || googleSheetsStandingsUrl === 'YOUR_STANDINGS_SHEETS_URL_HERE' || googleSheetsStandingsUrl.includes('YOUR_STANDINGS_DOC_ID_HERE') || googleSheetsStandingsUrl.includes('YOUR_STANDINGS_GID_HERE')) {
         console.warn("Using mock standings data. Please configure Google Sheets URL for standings.");
         return getMockStandingsData(); // Use mock data if URL is not set or is placeholder
      }
 
     try {
         // Replace with actual fetch and parse logic for standings sheet
-        console.log(`Fetching standings from: ${googleSheetsStandingsUrl}`);
+        console.log(`Fetching standings from: ${googleSheetsStandingsUrl}&_=${new Date().getTime()}`);
         // --- Placeholder for actual fetch ---
         // const response = await fetch(googleSheetsStandingsUrl + '&_=' + new Date().getTime(), { cache: 'no-store' });
         // if (!response.ok) throw new Error('Failed to fetch standings');
