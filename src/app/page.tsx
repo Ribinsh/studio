@@ -33,12 +33,16 @@ export default function Home() {
         const googleSheetsUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_URL || 'YOUR_GOOGLE_SHEETS_URL_HERE';
         if (googleSheetsUrl === 'YOUR_GOOGLE_SHEETS_URL_HERE') {
            console.warn("Using mock data. Please set NEXT_PUBLIC_GOOGLE_SHEETS_URL in your .env file.");
+           // Use mock data if URL is not set
+           setMatchData(getMockMatchData());
+        } else {
+            const data = await getMatchDataFromSheets(googleSheetsUrl);
+            setMatchData(data);
         }
-        const data = await getMatchDataFromSheets(googleSheetsUrl);
-        setMatchData(data);
       } catch (err) {
-        setError('Failed to fetch match data. Please check the Google Sheets URL and permissions.');
+        setError('Failed to fetch match data. Please check the Google Sheets URL and permissions. Displaying mock data instead.');
         console.error(err);
+        setMatchData(getMockMatchData()); // Use mock data on fetch error
       } finally {
         setIsLoading(false);
       }
@@ -90,14 +94,12 @@ export default function Home() {
                   <p className="ml-2 text-muted-foreground">Loading Scores...</p>
                 </div>
               ) : error ? (
-                 <div className="text-center text-destructive p-4 border border-destructive rounded-md">
+                 <div className="text-center text-destructive p-4 border border-destructive rounded-md mb-4">
                    <p>{error}</p>
-                   <p>Displaying mock data instead.</p>
-                   <Scoreboard matches={getMockMatchData()} />
                  </div>
-              ) : (
-                <Scoreboard matches={matchData} />
-              )}
+              ) : null }
+              {/* Always render scoreboard, even if loading or error, but potentially with mock data */}
+               <Scoreboard matches={matchData} />
             </CardContent>
           </Card>
         </div>
@@ -111,12 +113,14 @@ export default function Home() {
                </CardTitle>
             </CardHeader>
              <CardContent>
-               {isLoading && !error ? ( // Show loading only if standings are not yet calculated
+               {/* Show loading state only if data is being fetched AND no error occurred */}
+               {isLoading && !error ? (
                  <div className="flex justify-center items-center h-40">
                    <LoaderIcon className="h-8 w-8 animate-spin text-primary" />
                     <p className="ml-2 text-muted-foreground">Calculating Standings...</p>
                   </div>
                 ) : (
+                   // Render standings once loading is false OR if there was an error (using potentially mock data)
                   <GroupsDisplay standings={standings} />
                 )}
              </CardContent>
@@ -137,13 +141,17 @@ export default function Home() {
 }
 
 
-// Helper function to provide mock data if fetching fails
+// Helper function to provide mock data if fetching fails or URL is not set
 function getMockMatchData(): MatchData[] {
  return [
-    { matchNo: 1, time: '4:30 PM', team1: 'Kanthapuram', team1SetScore: 1, team1FinalScore: 25, team2: 'Marakkara', team2SetScore: 0, team2FinalScore: 22, breakPoints: 'Team 1: 10, Team 2: 8' },
-    { matchNo: 2, time: '5:00 PM', team1: 'Vaalal', team1SetScore: 0, team1FinalScore: 18, team2: 'Puthankunnu', team2SetScore: 1, team2FinalScore: 25, breakPoints: 'N/A' },
+    { matchNo: 1, time: '4:30 PM', team1: 'Kanthapuram', team1SetScore: 2, team1FinalScore: 25, team2: 'Marakkara', team2SetScore: 1, team2FinalScore: 23, breakPoints: 'K:5, M:3' },
+    { matchNo: 2, time: '5:00 PM', team1: 'Vaalal', team1SetScore: 0, team1FinalScore: 15, team2: 'Puthankunnu', team2SetScore: 1, team2FinalScore: 18, breakPoints: 'Live' },
     { matchNo: 3, time: '5:30 PM', team1: 'Kizhisseri', team1SetScore: 0, team1FinalScore: 0, team2: 'Kizhakkoth', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
     { matchNo: 4, time: '6:00 PM', team1: 'Kanthapuram', team1SetScore: 0, team1FinalScore: 0, team2: 'Vaalal', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-     // Add more mock matches if needed
+    { matchNo: 5, time: '6:30 PM', team1: 'Marakkara', team1SetScore: 0, team1FinalScore: 0, team2: 'Puthankunnu', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
+    { matchNo: 6, time: '7:00 PM', team1: 'Kakkancheri', team1SetScore: 0, team1FinalScore: 0, team2: 'Kizhisseri', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
+    { matchNo: 7, time: '7:30 PM', team1: 'Kanthapuram', team1SetScore: 0, team1FinalScore: 0, team2: 'Puthankunnu', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
+    { matchNo: 8, time: '8:00 PM', team1: 'Marakkara', team1SetScore: 0, team1FinalScore: 0, team2: 'Vaalal', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
+    { matchNo: 9, time: '8:30 PM', team1: 'Kakkancheri', team1SetScore: 0, team1FinalScore: 0, team2: 'Kizhakkoth', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
   ];
 }

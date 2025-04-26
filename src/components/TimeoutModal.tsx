@@ -37,6 +37,11 @@ const TimeoutModal: React.FC<TimeoutModalProps> = ({ isOpen, onClose }) => {
 
   const progressValue = ((DURATION - timeLeft) / DURATION) * 100;
 
+  // Only render the Dialog if isOpen is true
+  if (!isOpen) {
+    return null;
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px] bg-card shadow-lg rounded-lg border-accent border-2">
@@ -61,9 +66,3 @@ const TimeoutModal: React.FC<TimeoutModalProps> = ({ isOpen, onClose }) => {
 };
 
 export default TimeoutModal;
-```
-
-</content>
-  </change>
-  <change>
-    
