@@ -23,8 +23,7 @@ function initializeStandings(teams: string[]): Record<string, TeamStanding> {
       setsWon: 0,
       setsLost: 0,
       points: 0,
-      setRatio: 0, // Initialize set ratio
-      pointRatio: 0, // Initialize point ratio (if needed later)
+      breakPoints: 0, // Initialize break points
     };
   });
   return standings;
@@ -46,16 +45,18 @@ function updateStandingsForMatch(standings: Record<string, TeamStanding>, match:
      return;
    }
 
-   // Determine if the match is finished based on standard volleyball rules (e.g., first to 2 sets)
-   const isFinished = match.team1SetScore >= 2 || match.team2SetScore >= 2;
+   // Determine if the match is finished based on status field or set scores
+   const isFinished = match.status?.toLowerCase() === 'finished' || match.team1SetScore >= 2 || match.team2SetScore >= 2;
 
    if (!isFinished) {
      return; // Don't update standings for ongoing or upcoming matches
    }
 
-   // Ensure scores are numbers, default to 0 if not
+   // Ensure scores and point differences are numbers, default to 0 if not
    const team1SetScore = Number(match.team1SetScore) || 0;
    const team2SetScore = Number(match.team2SetScore) || 0;
+   const team1PointDiff = Number(match.team1PointDiff) || 0;
+   const team2PointDiff = Number(match.team2PointDiff) || 0;
 
 
   // Update matches played *only* if the match is finished
@@ -67,6 +68,11 @@ function updateStandingsForMatch(standings: Record<string, TeamStanding>, match:
   standings[team1].setsLost += team2SetScore;
   standings[team2].setsWon += team2SetScore;
   standings[team2].setsLost += team1SetScore;
+
+  // Update break points (aggregate point difference)
+  standings[team1].breakPoints += team1PointDiff;
+  standings[team2].breakPoints += team2PointDiff;
+
 
   // Determine winner and loser based on set score and assign points
   if (team1SetScore > team2SetScore) {
@@ -81,25 +87,24 @@ function updateStandingsForMatch(standings: Record<string, TeamStanding>, match:
     standings[team2].points += POINTS_FOR_WIN;
     standings[team1].losses += 1;
     standings[team1].points += POINTS_FOR_LOSS;
+  } else {
+      // Handle cases like forfeits if point differences are set but sets might be 0-0
+      // Or if points are assigned differently for 2-0 vs 2-1 wins (though current POINTS constants don't reflect that)
+      // If a match didn't complete but counts as played (e.g. forfeit with points assigned)
+      // ensure points are added if necessary based on rules.
+      // Current logic assumes a standard finished match based on set scores for point assignment.
+      // A status like 'Forfeit Team1' could trigger different point logic if needed.
   }
-  // Note: No explicit handling for draws needed as volleyball matches don't end in set draws.
-  // A match might be forfeited, which could be handled by specific set scores (e.g., 2-0 or 0-2 with 0 points)
-  // or potentially a dedicated status field if available from the source data.
 
-  // Calculate set ratio (handle division by zero)
-   standings[team1].setRatio = standings[team1].setsLost === 0 ? (standings[team1].setsWon > 0 ? Infinity : 0) : standings[team1].setsWon / standings[team1].setsLost;
-   standings[team2].setRatio = standings[team2].setsLost === 0 ? (standings[team2].setsWon > 0 ? Infinity : 0) : standings[team2].setsWon / standings[team2].setsLost;
-
+  // Note: Set Ratio and Point Ratio calculations removed as per requirement.
 }
 
 /**
- * Sorts team standings based on common volleyball tournament rules:
+ * Sorts team standings based on tournament rules:
  * 1. Points (desc)
  * 2. Number of Matches Won (desc)
- * 3. Set Ratio (Sets Won / Sets Lost) (desc) - Handle division by zero
- * 4. Point Ratio (Total Points Won / Total Points Lost) (desc) - Requires final scores, omitted for now
- * 5. Head-to-Head result (Requires specific logic, omitted for simplicity)
- * 6. Team Name (asc)
+ * 3. Break Points (Point Difference) (desc)
+ * 4. Team Name (asc)
  * @param standings - Array of team standings.
  * @returns Sorted array of team standings.
  */
@@ -113,27 +118,12 @@ function sortStandings(standings: TeamStanding[]): TeamStanding[] {
     if (b.wins !== a.wins) {
       return b.wins - a.wins;
     }
-    // 3. Sort by Set Ratio (descending)
-    if (b.setRatio !== a.setRatio) {
-       // Handle Infinity cases correctly (higher ratio is better)
-       if (a.setRatio === Infinity && b.setRatio !== Infinity) return -1;
-       if (b.setRatio === Infinity && a.setRatio !== Infinity) return 1;
-      return b.setRatio - a.setRatio;
+    // 3. Sort by Break Points (Point Difference) (descending)
+    if (b.breakPoints !== a.breakPoints) {
+      return b.breakPoints - a.breakPoints;
     }
 
-    // 4. Sort by Point Ratio (Requires final scores, currently omitted)
-    // const pointRatioA = a.pointsLost === 0 ? (a.pointsWon > 0 ? Infinity : 0) : a.pointsWon / a.pointsLost;
-    // const pointRatioB = b.pointsLost === 0 ? (b.pointsWon > 0 ? Infinity : 0) : b.pointsWon / b.pointsLost;
-    // if (pointRatioB !== pointRatioA) {
-    //    if (pointRatioA === Infinity && pointRatioB !== Infinity) return -1;
-    //    if (pointRatioB === Infinity && pointRatioA !== Infinity) return 1;
-    //   return pointRatioB - pointRatioA;
-    // }
-
-    // 5. Sort by Head-to-Head (Omitted for simplicity)
-    // Requires looking up the result of the match between a and b.
-
-    // 6. Sort by Name (ascending) as the final tie-breaker
+    // 4. Sort by Name (ascending) as the final tie-breaker
     return a.name.localeCompare(b.name);
   });
 }
@@ -154,12 +144,7 @@ export function calculateStandings(matches: MatchData[], teamsConfig: TeamsConfi
     updateStandingsForMatch(standings, match);
   });
 
-   // Recalculate ratios after all matches are processed
-   Object.values(standings).forEach(team => {
-     team.setRatio = team.setsLost === 0 ? (team.setsWon > 0 ? Infinity : 0) : team.setsWon / team.setsLost;
-     // Calculate point ratio here if final scores are reliably available and needed
-   });
-
+   // No recalculations needed after processing all matches unless logic changes
 
   // Filter and sort standings for each group
   const groupAStandings = sortStandings(

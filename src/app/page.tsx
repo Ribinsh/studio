@@ -2,15 +2,15 @@
 "use client";
 
 import type { MatchData } from '@/services/google-sheets';
-import { getMatchDataFromSheets } from '@/services/google-sheets';
+// Import both the function to fetch data and the mock data function
+import { getMatchDataFromSheets, getMockMatchData } from '@/services/google-sheets';
 import React, { useState, useEffect, useMemo } from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TimerIcon, TrophyIcon, LoaderIcon, UsersIcon, BarChartIcon } from 'lucide-react';
+import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, TvIcon } from 'lucide-react'; // Added TvIcon back if needed
 import TimeoutModal from '@/components/TimeoutModal';
 import StandingsModal from '@/components/StandingsModal'; // Import StandingsModal
 import LiveMatchDisplay from '@/components/LiveMatchDisplay'; // Import LiveMatchDisplay
-import GroupsDisplay from '@/components/GroupsDisplay'; // Keep import for StandingsModal
 import type { TeamStanding, GroupStandings } from '@/lib/types';
 import { calculateStandings } from '@/lib/standings';
 import { Badge } from '@/components/ui/badge'; // Import Badge
@@ -21,12 +21,9 @@ const TEAMS = {
   groupB: ['Kizhisseri', 'Kizhakkoth', 'Kakkancheri'],
 };
 
-// Helper function to determine match status (simplified for live check)
+// Helper function to determine match status using the 'status' field
 const getIsLive = (match: MatchData): boolean => {
-    const isFinished = (match.team1SetScore ?? 0) >= 2 || (match.team2SetScore ?? 0) >= 2; // Assuming best of 3 sets
-    const hasScores = (match.team1FinalScore ?? 0) > 0 || (match.team2FinalScore ?? 0) > 0 || (match.team1SetScore ?? 0) > 0 || (match.team2SetScore ?? 0) > 0;
-    // Consider 'Live' in breakPoints or calculated status
-    return (match.breakPoints?.toLowerCase() === 'live') || (hasScores && !isFinished);
+    return match.status?.toLowerCase() === 'live';
 };
 
 
@@ -42,11 +39,11 @@ export default function Home() {
       setIsLoading(true);
       setError(null);
       try {
-        // TODO: Replace with actual Google Sheets URL from user config
+        // Replace with actual Google Sheets URL from user config or .env
         const googleSheetsUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_URL || 'YOUR_GOOGLE_SHEETS_URL_HERE';
         if (googleSheetsUrl === 'YOUR_GOOGLE_SHEETS_URL_HERE') {
            console.warn("Using mock data. Please set NEXT_PUBLIC_GOOGLE_SHEETS_URL in your .env file.");
-           setMatchData(getMockMatchData());
+           setMatchData(getMockMatchData()); // Use imported mock data function
         } else {
             const data = await getMatchDataFromSheets(googleSheetsUrl);
             setMatchData(data);
@@ -54,7 +51,7 @@ export default function Home() {
       } catch (err) {
         setError('Failed to fetch match data. Please check the Google Sheets URL and permissions. Displaying mock data instead.');
         console.error(err);
-        setMatchData(getMockMatchData()); // Use mock data on fetch error
+        setMatchData(getMockMatchData()); // Use imported mock data function on fetch error
       } finally {
         setIsLoading(false);
       }
@@ -68,7 +65,7 @@ export default function Home() {
 
   const standings = useMemo(() => calculateStandings(matchData, TEAMS), [matchData]);
 
-  // Find the currently live match
+  // Find the currently live match using the updated helper
   const liveMatch = useMemo(() => matchData.find(getIsLive), [matchData]);
 
   const handleTimeoutClick = () => {
@@ -92,7 +89,6 @@ export default function Home() {
 
       <main className="flex-grow flex flex-col items-center justify-center">
         <Card className="w-full max-w-4xl shadow-lg mb-6">
-           {/* Remove CardHeader with TrophyIcon */}
            <CardContent className="p-6 md:p-10">
              {isLoading ? (
                <div className="flex justify-center items-center h-60">
@@ -103,10 +99,11 @@ export default function Home() {
                <div className="text-center text-destructive p-4 border border-destructive rounded-md">
                   <p className="text-lg">{error}</p>
                   <p className="text-sm mt-2">Displaying placeholder data.</p>
-                   <LiveMatchDisplay liveMatch={getMockMatchData().find(getIsLive)} /> {/* Show mock live match on error */}
+                   {/* Find live match from MOCK data when error occurs */}
+                   <LiveMatchDisplay liveMatch={getMockMatchData().find(getIsLive)} />
                </div>
              ) : (
-               <LiveMatchDisplay liveMatch={liveMatch} />
+               <LiveMatchDisplay liveMatch={liveMatch} /> // Pass the potentially undefined live match
              )}
            </CardContent>
          </Card>
@@ -154,20 +151,5 @@ export default function Home() {
   );
 }
 
-
-// Helper function to provide mock data
-function getMockMatchData(): MatchData[] {
- return [
-    { matchNo: 1, time: '4:30 PM', team1: 'Kanthapuram', team1SetScore: 2, team1FinalScore: 25, team2: 'Marakkara', team2SetScore: 1, team2FinalScore: 23, breakPoints: 'Finished' },
-    { matchNo: 2, time: '5:00 PM', team1: 'Vaalal', team1SetScore: 1, team1FinalScore: 18, team2: 'Puthankunnu', team2SetScore: 1, team2FinalScore: 20, breakPoints: 'Live' }, // Ensure one match is live
-    { matchNo: 3, time: '5:30 PM', team1: 'Kizhisseri', team1SetScore: 0, team1FinalScore: 0, team2: 'Kizhakkoth', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-    { matchNo: 4, time: '6:00 PM', team1: 'Kanthapuram', team1SetScore: 0, team1FinalScore: 0, team2: 'Vaalal', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-    // ... add other matches as upcoming or finished
-     { matchNo: 5, time: '6:30 PM', team1: 'Marakkara', team1SetScore: 0, team1FinalScore: 0, team2: 'Puthankunnu', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-     { matchNo: 6, time: '7:00 PM', team1: 'Kakkancheri', team1SetScore: 0, team1FinalScore: 0, team2: 'Kizhisseri', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-     { matchNo: 7, time: '7:30 PM', team1: 'Kanthapuram', team1SetScore: 0, team1FinalScore: 0, team2: 'Puthankunnu', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-     { matchNo: 8, time: '8:00 PM', team1: 'Marakkara', team1SetScore: 0, team1FinalScore: 0, team2: 'Vaalal', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-     { matchNo: 9, time: '8:30 PM', team1: 'Kakkancheri', team1SetScore: 0, team1FinalScore: 0, team2: 'Kizhakkoth', team2SetScore: 0, team2FinalScore: 0, breakPoints: 'Upcoming' },
-  ];
-}
-
+// Mock data function is now imported from services/google-sheets.ts
+// Remove the local getMockMatchData function from here if it exists.

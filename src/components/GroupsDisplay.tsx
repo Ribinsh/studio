@@ -25,15 +25,14 @@ const GroupTable: React.FC<GroupTableProps> = ({ title, teams }) => (
               <TableHead className="text-center px-2 py-2">MP</TableHead>
               <TableHead className="text-center px-2 py-2">W</TableHead>
               <TableHead className="text-center px-2 py-2">L</TableHead>
-              <TableHead className="text-center px-2 py-2">SW</TableHead>
-              <TableHead className="text-center px-2 py-2">SL</TableHead>
               <TableHead className="text-center px-2 py-2 font-bold">Pts</TableHead> {/* Make header bold */}
+              <TableHead className="text-center px-2 py-2">BP</TableHead> {/* Added Break Points header */}
             </TableRow>
           </TableHeader>
           <TableBody>
             {teams.length === 0 ? (
                <TableRow>
-                 <TableCell colSpan={8} className="h-24 text-center text-muted-foreground">
+                 <TableCell colSpan={7} className="h-24 text-center text-muted-foreground"> {/* Updated colspan */}
                    No standings available yet for this group.
                  </TableCell>
                </TableRow>
@@ -45,9 +44,8 @@ const GroupTable: React.FC<GroupTableProps> = ({ title, teams }) => (
                     <TableCell className="text-center px-2 py-2">{team.matchesPlayed}</TableCell>
                     <TableCell className="text-center px-2 py-2">{team.wins}</TableCell>
                     <TableCell className="text-center px-2 py-2">{team.losses}</TableCell>
-                    <TableCell className="text-center px-2 py-2">{team.setsWon}</TableCell>
-                    <TableCell className="text-center px-2 py-2">{team.setsLost}</TableCell>
                     <TableCell className="text-center font-bold text-primary px-2 py-2">{team.points}</TableCell>
+                    <TableCell className="text-center px-2 py-2">{team.breakPoints > 0 ? `+${team.breakPoints}` : team.breakPoints}</TableCell> {/* Display break points */}
                 </TableRow>
                 ))
              )}
@@ -66,7 +64,7 @@ const GroupsDisplay: React.FC<{ standings: GroupStandings }> = ({ standings }) =
       <GroupTable title="Group A Standings" teams={standings.groupA} />
       <GroupTable title="Group B Standings" teams={standings.groupB} />
       <p className="text-xs text-muted-foreground mt-2 text-center">
-        MP: Matches Played, W: Wins, L: Losses, SW: Sets Won, SL: Sets Lost, Pts: Points
+        MP: Matches Played, W: Wins, L: Losses, Pts: Points, BP: Break Points (Point Difference)
       </p>
     </div>
   );

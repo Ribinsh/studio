@@ -6,11 +6,10 @@ export interface TeamStanding {
   matchesPlayed: number;
   wins: number;
   losses: number;
-  setsWon: number;
+  setsWon: number; // Keep sets won/lost for internal calculation if needed, but won't display ratio
   setsLost: number;
   points: number; // Points based on tournament rules (e.g., 2 for win, 1 for loss, etc.)
-  setRatio: number; // Sets Won / Sets Lost (Infinity if Sets Lost is 0)
-  pointRatio?: number; // Optional: Points Won / Points Lost (Requires final scores)
+  breakPoints: number; // Numerical break points (e.g., point difference aggregate) for tie-breaking
 }
 
 /**
