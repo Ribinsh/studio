@@ -45,38 +45,39 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
         )}
 
       {/* Team Names */}
-      <div className="grid grid-cols-2 gap-4 w-full mb-6">
-        <h2 className={`text-3xl md:text-4xl font-bold truncate ${team1LeadsSets ? 'text-primary' : 'text-foreground'}`}>
+      <div className="grid grid-cols-2 gap-4 w-full mb-4"> {/* Reduced margin */}
+        <h2 className={`text-2xl md:text-3xl font-bold truncate ${team1LeadsSets ? 'text-primary' : 'text-foreground'}`}>
           {team1 || 'Team A'}
         </h2>
-        <h2 className={`text-3xl md:text-4xl font-bold truncate ${team2LeadsSets ? 'text-primary' : 'text-foreground'}`}>
+        <h2 className={`text-2xl md:text-3xl font-bold truncate ${team2LeadsSets ? 'text-primary' : 'text-foreground'}`}>
           {team2 || 'Team B'}
         </h2>
       </div>
 
-      {/* Set Scores */}
-      <div className="text-lg text-muted-foreground mb-2">Set Score</div>
-      <div className="grid grid-cols-2 gap-4 w-full mb-8">
-        <div className={`text-6xl md:text-8xl font-bold ${team1LeadsSets ? 'text-accent' : 'text-foreground'}`}>
-          {team1SetScore}
+      {/* Current Set Points - NOW MORE PROMINENT */}
+      <div className="text-lg text-muted-foreground mb-2">Current Points</div>
+      <div className="grid grid-cols-2 gap-4 w-full mb-6"> {/* Increased margin bottom */}
+         <div className={`text-6xl md:text-8xl font-bold ${team1LeadsPoints ? 'text-primary' : 'text-foreground/80'}`}> {/* Larger size */}
+          {team1CurrentPoints}
         </div>
-        <div className={`text-6xl md:text-8xl font-bold ${team2LeadsSets ? 'text-accent' : 'text-foreground'}`}>
-          {team2SetScore}
+         <div className={`text-6xl md:text-8xl font-bold ${team2LeadsPoints ? 'text-primary' : 'text-foreground/80'}`}> {/* Larger size */}
+          {team2CurrentPoints}
         </div>
       </div>
 
       <Separator className="my-4 w-3/4" />
 
-      {/* Current Set Points */}
-      <div className="text-lg text-muted-foreground mb-2">Current Points</div>
+      {/* Set Scores - NOW SMALLER */}
+      <div className="text-base text-muted-foreground mb-1">Set Score</div> {/* Adjusted label size/margin */}
       <div className="grid grid-cols-2 gap-4 w-full">
-         <div className={`text-5xl md:text-7xl font-bold ${team1LeadsPoints ? 'text-primary' : 'text-foreground/80'}`}>
-          {team1CurrentPoints}
+        <div className={`text-4xl md:text-5xl font-bold ${team1LeadsSets ? 'text-accent' : 'text-foreground'}`}> {/* Smaller size */}
+          {team1SetScore}
         </div>
-         <div className={`text-5xl md:text-7xl font-bold ${team2LeadsPoints ? 'text-primary' : 'text-foreground/80'}`}>
-          {team2CurrentPoints}
+        <div className={`text-4xl md:text-5xl font-bold ${team2LeadsSets ? 'text-accent' : 'text-foreground'}`}> {/* Smaller size */}
+          {team2SetScore}
         </div>
       </div>
+
     </div>
   );
 };
