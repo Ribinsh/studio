@@ -102,20 +102,20 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
         </h2>
       </div>
 
-      {/* Current Set Points - NOW MORE PROMINENT */}
+      {/* Current Set Points */}
       <div className="text-lg text-muted-foreground mb-2">Current Points</div>
       <div className="grid grid-cols-2 gap-4 w-full mb-6">
          <div className={cn(
                 `text-6xl md:text-8xl font-bold transition-transform duration-300 ease-out`,
-                team1LeadsPoints ? 'text-primary' : 'text-foreground/80',
-                animateScore1 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class
+                team1LeadsPoints ? 'text-primary' : 'text-foreground/80', // Use primary color for leading team
+                animateScore1 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class (keep accent for animation bump)
               )}>
           {team1CurrentPoints}
         </div>
          <div className={cn(
                `text-6xl md:text-8xl font-bold transition-transform duration-300 ease-out`,
-                team2LeadsPoints ? 'text-primary' : 'text-foreground/80',
-                animateScore2 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class
+                team2LeadsPoints ? 'text-primary' : 'text-foreground/80', // Use primary color for leading team
+                animateScore2 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class (keep accent for animation bump)
               )}>
           {team2CurrentPoints}
         </div>
@@ -123,9 +123,10 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
 
       <Separator className="my-4 w-3/4" />
 
-      {/* Set Scores - NOW SMALLER */}
+      {/* Set Scores */}
       <div className="text-base text-muted-foreground mb-1">Set Score</div>
       <div className="grid grid-cols-2 gap-4 w-full">
+         {/* Reverted font size changes for set scores */}
         <div className={`text-4xl md:text-5xl font-bold ${team1LeadsSets ? 'text-accent' : 'text-foreground'}`}>
           {team1SetScore}
         </div>
