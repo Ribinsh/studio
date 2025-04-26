@@ -124,7 +124,7 @@ export default function AdminPage() {
     setIsSaving(true);
     await updateLiveScore(liveScoreData as LiveMatchScoreData); // Call context function
     setIsSaving(false);
-    // Toast handled by context or implicitly by UI update
+    toast({ title: "Success", description: "Live score update sent." }); // Give feedback
   };
 
   const handleClearLiveScore = async () => {
@@ -138,7 +138,7 @@ export default function AdminPage() {
      setLiveScoreData(clearedScore); // Update local state immediately for responsiveness
      await updateLiveScore(null); // Send null to Firebase via context
      setIsSaving(false);
-     toast({ title: "Success", description: "Live score cleared." });
+     toast({ title: "Success", description: "Live score cleared globally." });
    };
 
 
@@ -251,6 +251,8 @@ export default function AdminPage() {
                          <SelectValue placeholder="Select Team 1" />
                       </SelectTrigger>
                       <SelectContent>
+                         {/* Add a placeholder/default item */}
+                         <SelectItem value="" disabled>Select Team 1</SelectItem>
                          {allTeams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
                       </SelectContent>
                  </Select>
@@ -275,6 +277,8 @@ export default function AdminPage() {
                           <SelectValue placeholder="Select Team 2" />
                        </SelectTrigger>
                        <SelectContent>
+                           {/* Add a placeholder/default item */}
+                           <SelectItem value="" disabled>Select Team 2</SelectItem>
                           {allTeams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
                        </SelectContent>
                   </Select>

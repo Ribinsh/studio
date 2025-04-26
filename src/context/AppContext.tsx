@@ -37,13 +37,13 @@ const createInitialStanding = (teamName: string): TeamStanding => ({
     breakPoints: 0,
 });
 
-// Helper to initialize standings for given teams
+// Helper to initialize standings for given teams if they don't exist in Firebase
 const initializeFirebaseStandings = async (currentTeams: { groupA: string[]; groupB: string[] }) => {
     if (!database) {
         console.error("AppContext: Cannot initialize standings, Firebase database is not available.");
         return null;
     }
-    console.log("AppContext: Initializing Firebase standings for teams:", currentTeams);
+    console.log("AppContext: Attempting to initialize Firebase standings for teams:", currentTeams);
     const initialGroupA = currentTeams.groupA.map(createInitialStanding);
     const initialGroupB = currentTeams.groupB.map(createInitialStanding);
     const initialStandings: GroupStandings = {
@@ -51,11 +51,19 @@ const initializeFirebaseStandings = async (currentTeams: { groupA: string[]; gro
         groupB: sortStandingsDisplay(initialGroupB),
     };
     try {
-        await set(ref(database, 'standings'), initialStandings);
-        console.log("AppContext: Initialized and saved standings to Firebase.");
-        return initialStandings;
+        // Only set if standings are truly empty/non-existent
+        const standingsRef = ref(database, 'standings');
+        const snapshot = await get(standingsRef);
+        if (!snapshot.exists() || !snapshot.val() || !snapshot.val().groupA || !snapshot.val().groupB) {
+            await set(standingsRef, initialStandings);
+            console.log("AppContext: Initialized and saved standings to Firebase because they were missing.");
+            return initialStandings;
+        } else {
+            console.log("AppContext: Standings already exist in Firebase, skipping initialization.");
+            return snapshot.val() as GroupStandings; // Return existing data
+        }
     } catch (error) {
-        console.error("AppContext: Failed to initialize standings in Firebase:", error);
+        console.error("AppContext: Failed to initialize/check standings in Firebase:", error);
         return null; // Return null on failure
     }
 };
@@ -106,11 +114,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const liveMatchListener = onValue(liveMatchRef, (snapshot) => {
       const data = snapshot.val();
       console.log("AppContext: Received liveMatch update from Firebase:", data);
+      // Ensure matchType exists, default to empty string if missing in DB
       setLiveMatch(data ? { ...data, matchType: data.matchType || '' } : null);
     }, (error) => {
       console.error("AppContext: Firebase liveMatch listener error:", error);
       toast({ title: "Error", description: "Could not sync live match data.", variant: "destructive" });
       // Optionally set liveMatch to null or keep existing state on error
+      setLiveMatch(null); // Clear on error
     });
 
     // Listener for Standings Data
@@ -124,6 +134,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                  groupB: sortStandingsDisplay(data.groupB),
              };
             setStandings(sortedData);
+             setIsLoading(false); // Set loading false after successful data fetch
         } else {
             console.log("AppContext: Standings data from Firebase is null or invalid. Attempting to initialize.");
             // Attempt to initialize if data is missing/invalid
@@ -134,10 +145,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                      setStandings(null); // Set to null if initialization failed
                      toast({ title: "Warning", description: "Could not initialize standings data.", variant: "destructive" });
                 }
+                setIsLoading(false); // Set loading false after initialization attempt
             });
         }
-         // Set loading to false after the first standings update is processed
-         setIsLoading(false);
     }, (error) => {
         console.error("AppContext: Firebase standings listener error:", error);
         toast({ title: "Error", description: "Could not sync standings data.", variant: "destructive" });
@@ -156,6 +166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
   // Run only once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [toast]); // Add toast to dependency array
 
 
