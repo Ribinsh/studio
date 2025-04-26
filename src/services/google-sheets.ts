@@ -59,8 +59,11 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
                          .map(line => line.trim())
                          .filter(line => line.length > 0);
 
-    console.log(`Parsed ${lines.length} lines from CSV.`);
+    // Log the actual lines received for better debugging
+    console.log("Filtered non-empty lines from CSV:", lines);
+    console.log(`Parsed ${lines.length} non-empty lines from CSV.`);
 
+    // Check if we have at least the header and two team rows
     if (lines.length < 3) {
         console.error(`Live score CSV has only ${lines.length} non-empty lines. Expected at least 3 (Header + 2 Teams).`);
         return null;
@@ -70,6 +73,7 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
     // Handle potential commas within quoted strings if necessary, though unlikely for this data
     const parseLine = (line: string): string[] => line.split(',').map(cell => cell.trim());
 
+    // Use only the first 3 lines (Header, Team1, Team2) even if more exist
     const header = parseLine(lines[0]);
     const team1Data = parseLine(lines[1]);
     const team2Data = parseLine(lines[2]);
@@ -162,12 +166,20 @@ function parseLiveScoreCsv(csvText: string): LiveMatchScoreData | null {
  */
 export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: string): Promise<LiveMatchScoreData | null> {
 
-  // Define the specific valid URL expected
+  // Define the specific valid URL identifier expected
   const validUrlIdentifier = '13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU';
 
   // Check if the URL is missing, a placeholder, or doesn't contain the expected identifier
-  if (!googleSheetsLiveScoreUrl || googleSheetsLiveScoreUrl.includes('EXAMPLE') || !googleSheetsLiveScoreUrl.includes(validUrlIdentifier)) {
-    console.warn("Invalid, placeholder, or incorrect Google Sheets URL for live score provided:", googleSheetsLiveScoreUrl);
+  // Also check environment variables
+  const liveScoreSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0';
+  const liveScoreDocId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
+  const liveScoreBaseUrl = liveScoreDocId
+      ? `https://docs.google.com/spreadsheets/d/${liveScoreDocId}/export?format=csv&gid=${liveScoreSheetId}`
+      : googleSheetsLiveScoreUrl; // Fallback to the directly provided URL
+
+
+  if (!liveScoreBaseUrl || liveScoreBaseUrl.includes('EXAMPLE') || liveScoreBaseUrl.includes('YOUR_')) {
+    console.warn("Invalid or placeholder Google Sheets URL for live score provided:", liveScoreBaseUrl);
     console.log("Returning MOCK live score data instead.");
     // Return mock data ONLY if the URL is clearly invalid/placeholder
      return getMockLiveScoreData();
@@ -176,7 +188,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
   }
 
    // Add cache-busting query parameter
-   const urlWithCacheBuster = `${googleSheetsLiveScoreUrl}&_=${new Date().getTime()}`;
+   const urlWithCacheBuster = `${liveScoreBaseUrl}&_=${new Date().getTime()}`;
 
 
   try {
@@ -197,7 +209,9 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
           // Handle non-200 responses (e.g., 404 Not Found, 403 Forbidden if permissions changed)
            const errorText = await response.text(); // Try to get error text from response
            console.error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}. Response body: ${errorText}`);
-           throw new Error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}`);
+           // Do not fall back to mock data here, signal the error properly
+           // throw new Error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}`);
+           return null; // Indicate fetch failure
       }
 
       const csvText = await response.text();
@@ -212,8 +226,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
 
       if (!parsedData) {
           console.error("Failed to parse live score CSV data after fetch.");
-          // Optionally return mock data here if parsing fails after a successful fetch? Or null?
-          // return getMockLiveScoreData();
+          // Parsing failed, return null, don't use mock data
           return null;
       }
 
@@ -222,10 +235,8 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
 
   } catch (error: any) {
       console.error("Error in getLiveScoreDataFromSheets:", error.message || error);
-      // Fallback to mock data on any fetch/parse error
-      console.log("Falling back to mock live score data due to error during fetch/parse.");
-      return getMockLiveScoreData(); // Keep mock data fallback for now
-      // return null; // Or return null if you prefer no data on error
+      // Don't fallback to mock data on generic errors, return null
+      return null;
   }
 }
 
