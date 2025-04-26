@@ -43,6 +43,7 @@
     "genkit": "^1.0.4",
     "graphql": "^16.9.0",
     "graphql-ws": "^5.16.0",
+    "isomorphic-ws": "^5.0.0",
     "lucide-react": "^0.475.0",
     "next": "15.2.3",
     "papaparse": "^5.4.1",
