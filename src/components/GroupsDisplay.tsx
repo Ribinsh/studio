@@ -1,30 +1,33 @@
+
 import type React from 'react';
 import type { TeamStanding, GroupStandings } from '@/lib/types';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // Keep Card for GroupTable internal structure
 
-interface GroupsDisplayProps {
-  standings: GroupStandings;
+interface GroupTableProps {
+  title: string;
+  teams: TeamStanding[];
 }
 
-const GroupTable: React.FC<{ title: string; teams: TeamStanding[] }> = ({ title, teams }) => (
-  <Card className="mb-6 shadow-md">
-    <CardHeader className="bg-secondary rounded-t-lg p-4">
+// Internal component to render a single group's table
+const GroupTable: React.FC<GroupTableProps> = ({ title, teams }) => (
+  <Card className="mb-6 shadow-md border border-border/50"> {/* Add border for clarity in modal */}
+    <CardHeader className="bg-secondary rounded-t-lg p-3"> {/* Slightly smaller padding */}
       <CardTitle className="text-lg font-semibold">{title}</CardTitle>
     </CardHeader>
     <CardContent className="p-0">
       <div className="overflow-x-auto">
         <Table>
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[40px] text-center">#</TableHead>
-              <TableHead>Team</TableHead>
-              <TableHead className="text-center">MP</TableHead>
-              <TableHead className="text-center">W</TableHead>
-              <TableHead className="text-center">L</TableHead>
-              <TableHead className="text-center">SW</TableHead>
-              <TableHead className="text-center">SL</TableHead>
-              <TableHead className="text-center">Pts</TableHead>
+            <TableRow className="hover:bg-transparent bg-muted/50">
+              <TableHead className="w-[35px] text-center px-2 py-2">#</TableHead>
+              <TableHead className="px-3 py-2">Team</TableHead>
+              <TableHead className="text-center px-2 py-2">MP</TableHead>
+              <TableHead className="text-center px-2 py-2">W</TableHead>
+              <TableHead className="text-center px-2 py-2">L</TableHead>
+              <TableHead className="text-center px-2 py-2">SW</TableHead>
+              <TableHead className="text-center px-2 py-2">SL</TableHead>
+              <TableHead className="text-center px-2 py-2 font-bold">Pts</TableHead> {/* Make header bold */}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -36,15 +39,15 @@ const GroupTable: React.FC<{ title: string; teams: TeamStanding[] }> = ({ title,
                </TableRow>
              ) : (
                 teams.map((team, index) => (
-                <TableRow key={team.name} className="hover:bg-muted/50">
-                    <TableCell className="font-medium text-center">{index + 1}</TableCell>
-                    <TableCell>{team.name}</TableCell>
-                    <TableCell className="text-center">{team.matchesPlayed}</TableCell>
-                    <TableCell className="text-center">{team.wins}</TableCell>
-                    <TableCell className="text-center">{team.losses}</TableCell>
-                    <TableCell className="text-center">{team.setsWon}</TableCell>
-                    <TableCell className="text-center">{team.setsLost}</TableCell>
-                    <TableCell className="text-center font-bold text-primary">{team.points}</TableCell>
+                <TableRow key={team.name} className="hover:bg-muted/30"> {/* Slightly subtler hover */}
+                    <TableCell className="font-medium text-center px-2 py-2">{index + 1}</TableCell>
+                    <TableCell className="px-3 py-2">{team.name}</TableCell>
+                    <TableCell className="text-center px-2 py-2">{team.matchesPlayed}</TableCell>
+                    <TableCell className="text-center px-2 py-2">{team.wins}</TableCell>
+                    <TableCell className="text-center px-2 py-2">{team.losses}</TableCell>
+                    <TableCell className="text-center px-2 py-2">{team.setsWon}</TableCell>
+                    <TableCell className="text-center px-2 py-2">{team.setsLost}</TableCell>
+                    <TableCell className="text-center font-bold text-primary px-2 py-2">{team.points}</TableCell>
                 </TableRow>
                 ))
              )}
@@ -56,12 +59,13 @@ const GroupTable: React.FC<{ title: string; teams: TeamStanding[] }> = ({ title,
 );
 
 
-const GroupsDisplay: React.FC<GroupsDisplayProps> = ({ standings }) => {
+// Main component rendering both group tables
+const GroupsDisplay: React.FC<{ standings: GroupStandings }> = ({ standings }) => {
   return (
     <div>
       <GroupTable title="Group A Standings" teams={standings.groupA} />
       <GroupTable title="Group B Standings" teams={standings.groupB} />
-      <p className="text-xs text-muted-foreground mt-4 text-center">
+      <p className="text-xs text-muted-foreground mt-2 text-center">
         MP: Matches Played, W: Wins, L: Losses, SW: Sets Won, SL: Sets Lost, Pts: Points
       </p>
     </div>
