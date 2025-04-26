@@ -2,7 +2,7 @@
 'use client';
 
 import type { ChangeEvent, FormEvent } from 'react';
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react'; // Added useEffect
 import { AppContext } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,59 +10,49 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { LiveMatchScoreData, TeamStanding } from '@/lib/types';
+import type { LiveMatchScoreData, TeamStanding, GroupStandings } from '@/lib/types'; // Import GroupStandings
 import { useToast } from '@/hooks/use-toast';
-import { Separator } from '@/components/ui/separator';
+// Removed Separator import as it's no longer needed
 
 export default function AdminPage() {
-  const { teams, liveMatch, standings, addTeam, updateLiveScore, updateTeamStanding, isLoading } = useContext(AppContext);
+  // Removed addTeam from context destructuring
+  const { teams, liveMatch, standings, updateLiveScore, updateTeamStanding, isLoading } = useContext(AppContext);
   const { toast } = useToast();
 
-  // State for forms
-  const [newTeamName, setNewTeamName] = useState('');
-  const [selectedGroup, setSelectedGroup] = useState<'groupA' | 'groupB'>('groupA');
+  // State for forms - Removed states related to adding teams
   const [liveScoreData, setLiveScoreData] = useState<Partial<LiveMatchScoreData>>(liveMatch || {
     team1: '', team1SetScore: 0, team1CurrentPoints: 0,
     team2: '', team2SetScore: 0, team2CurrentPoints: 0,
     status: 'Live',
   });
-  const [editingStandings, setEditingStandings] = useState<GroupStandings | null>(JSON.parse(JSON.stringify(standings || { groupA: [], groupB: [] }))); // Deep copy for editing
+  // Initialize editingStandings with a deep copy or null
+   const [editingStandings, setEditingStandings] = useState<GroupStandings | null>(null);
 
   // Update local live score state when context changes (e.g., initial load)
-  React.useEffect(() => {
-    setLiveScoreData(liveMatch || {
-      team1: '', team1SetScore: 0, team1CurrentPoints: 0,
-      team2: '', team2SetScore: 0, team2CurrentPoints: 0,
-      status: 'Live',
-    });
-  }, [liveMatch]);
+  useEffect(() => {
+    // Only update if liveMatch from context is different to avoid unnecessary updates
+    if (JSON.stringify(liveMatch) !== JSON.stringify(liveScoreData)) {
+        setLiveScoreData(liveMatch || {
+          team1: '', team1SetScore: 0, team1CurrentPoints: 0,
+          team2: '', team2SetScore: 0, team2CurrentPoints: 0,
+          status: 'Live',
+        });
+    }
+  }, [liveMatch]); // Keep liveScoreData out of dependency array
 
   // Update local standings state when context changes
-  React.useEffect(() => {
-    setEditingStandings(JSON.parse(JSON.stringify(standings || { groupA: [], groupB: [] })));
-  }, [standings]);
+  useEffect(() => {
+     // Deep copy standings from context only if they differ from local state or local state is null
+     if (standings && JSON.stringify(standings) !== JSON.stringify(editingStandings)) {
+         setEditingStandings(JSON.parse(JSON.stringify(standings)));
+     } else if (!standings && editingStandings !== null) {
+         // Handle case where context standings become null (e.g., reset)
+         setEditingStandings(null);
+     }
+  }, [standings]); // Keep editingStandings out of dependency array
 
 
-  const handleAddTeam = (e: FormEvent) => {
-    e.preventDefault();
-    if (!newTeamName.trim()) {
-      toast({ title: "Error", description: "Team name cannot be empty.", variant: "destructive" });
-      return;
-    }
-    try {
-        // Check if team already exists in either group
-        const teamExists = teams.groupA.includes(newTeamName.trim()) || teams.groupB.includes(newTeamName.trim());
-        if (teamExists) {
-            toast({ title: "Error", description: `Team "${newTeamName.trim()}" already exists.`, variant: "destructive" });
-            return;
-        }
-      addTeam(selectedGroup, newTeamName.trim());
-      setNewTeamName('');
-      toast({ title: "Success", description: `Team "${newTeamName.trim()}" added to ${selectedGroup}.` });
-    } catch (error: any) {
-        toast({ title: "Error adding team", description: error.message, variant: "destructive" });
-    }
-  };
+  // Removed handleAddTeam function
 
   const handleLiveScoreChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -110,7 +100,12 @@ export default function AdminPage() {
       if (!prev) return null;
       const updatedStandings = JSON.parse(JSON.stringify(prev)); // Deep copy
       const numericValue = typeof value === 'string' ? parseInt(value, 10) || 0 : value;
-      (updatedStandings[group][teamIndex] as any)[field] = numericValue;
+      // Ensure the field exists before trying to assign
+      if (updatedStandings[group][teamIndex] && field in updatedStandings[group][teamIndex]) {
+          (updatedStandings[group][teamIndex] as any)[field] = numericValue;
+      } else {
+          console.error(`Field ${field} does not exist on team standing object.`);
+      }
       return updatedStandings;
     });
   };
@@ -119,12 +114,22 @@ export default function AdminPage() {
     if (!editingStandings) return;
 
     try {
-        // Iterate and update each team individually
+        // Iterate and update each team individually using the context function
         editingStandings.groupA.forEach((team, index) => {
-            updateTeamStanding('groupA', index, team);
+            const originalIndex = standings?.groupA.findIndex(t => t.name === team.name); // Find original index if order changed
+            if (originalIndex !== undefined && originalIndex !== -1) {
+                updateTeamStanding('groupA', originalIndex, team);
+            } else {
+                 console.warn(`Could not find original index for team ${team.name} in Group A during update.`);
+            }
         });
         editingStandings.groupB.forEach((team, index) => {
-             updateTeamStanding('groupB', index, team);
+             const originalIndex = standings?.groupB.findIndex(t => t.name === team.name);
+             if (originalIndex !== undefined && originalIndex !== -1) {
+                updateTeamStanding('groupB', originalIndex, team);
+             } else {
+                 console.warn(`Could not find original index for team ${team.name} in Group B during update.`);
+             }
         });
         toast({ title: "Success", description: "All standings updated." });
     } catch (error: any) {
@@ -141,60 +146,7 @@ export default function AdminPage() {
     <div className="container mx-auto p-4 md:p-8">
       <h1 className="text-3xl font-bold text-primary mb-6">Admin Panel</h1>
 
-       {/* Add/Manage Teams */}
-       <Card className="mb-6">
-         <CardHeader>
-           <CardTitle>Manage Teams</CardTitle>
-           <CardDescription>Add new teams to the tournament groups.</CardDescription>
-         </CardHeader>
-         <CardContent>
-           <form onSubmit={handleAddTeam} className="flex flex-col sm:flex-row gap-4 items-end">
-             <div className="flex-grow">
-               <Label htmlFor="teamName">Team Name</Label>
-               <Input
-                 id="teamName"
-                 value={newTeamName}
-                 onChange={(e) => setNewTeamName(e.target.value)}
-                 placeholder="Enter team name"
-               />
-             </div>
-             <div>
-               <Label htmlFor="groupSelect">Group</Label>
-                <Select value={selectedGroup} onValueChange={(value) => setSelectedGroup(value as 'groupA' | 'groupB')}>
-                  <SelectTrigger id="groupSelect" className="w-[180px]">
-                    <SelectValue placeholder="Select group" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="groupA">Group A</SelectItem>
-                    <SelectItem value="groupB">Group B</SelectItem>
-                  </SelectContent>
-                </Select>
-             </div>
-             <Button type="submit" disabled={isLoading}>Add Team</Button>
-           </form>
-             <Separator className="my-6" />
-             <h3 className="text-lg font-semibold mb-2">Current Teams</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <h4 className="font-medium mb-1">Group A</h4>
-                    {teams.groupA.length > 0 ? (
-                        <ul className="list-disc list-inside">
-                            {teams.groupA.map(team => <li key={team}>{team}</li>)}
-                        </ul>
-                    ) : <p className="text-muted-foreground text-sm">No teams yet.</p>}
-                </div>
-                 <div>
-                    <h4 className="font-medium mb-1">Group B</h4>
-                     {teams.groupB.length > 0 ? (
-                        <ul className="list-disc list-inside">
-                            {teams.groupB.map(team => <li key={team}>{team}</li>)}
-                        </ul>
-                     ) : <p className="text-muted-foreground text-sm">No teams yet.</p>}
-                 </div>
-            </div>
-         </CardContent>
-       </Card>
-
+       {/* Removed Add/Manage Teams Card */}
 
       {/* Update Live Score */}
       <Card className="mb-6">
@@ -277,11 +229,11 @@ export default function AdminPage() {
            <CardDescription>Manually edit the standings for each team. Remember to save changes.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading ? (
+          {isLoading && !editingStandings ? ( // Show loading only if editingStandings isn't populated yet
             <p>Loading standings...</p>
           ) : editingStandings ? (
             <>
-              {['groupA', 'groupB'].map((groupKey) => (
+              {(['groupA', 'groupB'] as Array<keyof GroupStandings>).map((groupKey) => ( // Type assertion for map
                 <div key={groupKey} className="mb-6">
                   <h3 className="text-xl font-semibold mb-3">{groupKey === 'groupA' ? 'Group A' : 'Group B'}</h3>
                   <Table>
@@ -296,17 +248,18 @@ export default function AdminPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {editingStandings[groupKey as keyof GroupStandings].map((team, index) => (
+                      {editingStandings[groupKey].map((team, index) => (
                         <TableRow key={team.name}>
                           <TableCell>{team.name}</TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed} onChange={(e) => handleStandingChange(groupKey as 'groupA' | 'groupB', index, 'matchesPlayed', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins} onChange={(e) => handleStandingChange(groupKey as 'groupA' | 'groupB', index, 'wins', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses} onChange={(e) => handleStandingChange(groupKey as 'groupA' | 'groupB', index, 'losses', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points} onChange={(e) => handleStandingChange(groupKey as 'groupA' | 'groupB', index, 'points', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints} onChange={(e) => handleStandingChange(groupKey as 'groupA' | 'groupB', index, 'breakPoints', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
+                           {/* Make BP accept positive/negative numbers */}
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
                         </TableRow>
                       ))}
-                       {editingStandings[groupKey as keyof GroupStandings].length === 0 && (
+                       {editingStandings[groupKey].length === 0 && (
                             <TableRow>
                                 <TableCell colSpan={6} className="text-center text-muted-foreground">No teams in this group yet.</TableCell>
                             </TableRow>
