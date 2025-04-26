@@ -18,17 +18,19 @@ import Link from 'next/link'; // Import Link for Home button
 
 // Define Match Types
 const matchTypes: Exclude<LiveMatchScoreData['matchType'], ''>[] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final'];
-const NONE_MATCH_TYPE_VALUE = "__NONE__";
+const NONE_MATCH_TYPE_VALUE = "__NONE__"; // Use for the "None" option in Select
 const AUTH_CODE = "7000"; // Authentication code
 
 export default function AdminPage() {
-  const { teams, liveMatch, standings, updateLiveScore, updateTeamStanding, isLoading } = useContext(AppContext);
+  // Use updateAllStandings instead of updateTeamStanding
+  const { teams, liveMatch, standings, updateLiveScore, updateAllStandings, isLoading } = useContext(AppContext);
   const { toast } = useToast();
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authCodeInput, setAuthCodeInput] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // State for local editing
   const [liveScoreData, setLiveScoreData] = useState<Partial<LiveMatchScoreData>>(liveMatch || {
     team1: '', team1SetScore: 0, team1CurrentPoints: 0,
     team2: '', team2SetScore: 0, team2CurrentPoints: 0,
@@ -36,27 +38,37 @@ export default function AdminPage() {
     matchType: '',
   });
   const [editingStandings, setEditingStandings] = useState<GroupStandings | null>(null);
+  const [isSaving, setIsSaving] = useState(false); // State for saving indicators
 
-  // Update local live score state when context changes
+  // Update local live score state when context changes (to reflect global updates)
   useEffect(() => {
-    if (JSON.stringify(liveMatch) !== JSON.stringify(liveScoreData)) {
-        setLiveScoreData(liveMatch || {
-          team1: '', team1SetScore: 0, team1CurrentPoints: 0,
-          team2: '', team2SetScore: 0, team2CurrentPoints: 0,
-          status: 'Live',
-          matchType: '',
+     // Check if the context data is substantially different before updating local state
+     // This prevents overwriting local edits if context updates while editing
+     if (liveMatch && JSON.stringify(liveMatch) !== JSON.stringify(liveScoreData)) {
+        setLiveScoreData({ ...liveMatch }); // Sync with context
+     } else if (!liveMatch && liveScoreData && (liveScoreData.team1 || liveScoreData.team2)) {
+        // If context clears the match, clear local form too
+        setLiveScoreData({
+            team1: '', team1SetScore: 0, team1CurrentPoints: 0,
+            team2: '', team2SetScore: 0, team2CurrentPoints: 0,
+            status: '',
+            matchType: '',
         });
-    }
-  }, [liveMatch]);
+     }
+  }, [liveMatch]); // Removed liveScoreData dependency to avoid loops
 
   // Update local standings state when context changes
   useEffect(() => {
-     if (standings && JSON.stringify(standings) !== JSON.stringify(editingStandings)) {
-         setEditingStandings(JSON.parse(JSON.stringify(standings)));
-     } else if (!standings && editingStandings !== null) {
-         setEditingStandings(null);
+     if (standings && !isSaving) { // Only update if not currently saving
+        // Deep compare to avoid unnecessary updates/overwrites
+        if (JSON.stringify(standings) !== JSON.stringify(editingStandings)) {
+            setEditingStandings(JSON.parse(JSON.stringify(standings))); // Deep copy from context
+        }
+     } else if (!standings && editingStandings !== null && !isSaving) {
+        setEditingStandings(null); // Clear if context is null
      }
-  }, [standings]);
+  }, [standings, isSaving]); // Add isSaving dependency
+
 
   const handleAuthCodeChange = (e: ChangeEvent<HTMLInputElement>) => {
     setAuthCodeInput(e.target.value);
@@ -89,15 +101,15 @@ export default function AdminPage() {
      }));
    };
 
-    const handleMatchTypeChange = (value: string) => {
-        const actualValue = value === NONE_MATCH_TYPE_VALUE ? '' : value;
-        setLiveScoreData(prev => ({
-          ...prev,
-          matchType: actualValue as LiveMatchScoreData['matchType'],
-        }));
-    };
+   const handleMatchTypeChange = (value: string) => {
+     const actualValue = value === NONE_MATCH_TYPE_VALUE ? '' : value;
+     setLiveScoreData(prev => ({
+       ...prev,
+       matchType: actualValue as LiveMatchScoreData['matchType'],
+     }));
+   };
 
-  const handleUpdateLiveScore = (e: FormEvent) => {
+  const handleUpdateLiveScore = async (e: FormEvent) => {
     e.preventDefault();
     if (!liveScoreData.team1 || !liveScoreData.team2) {
         toast({ title: "Error", description: "Both team names must be selected.", variant: "destructive" });
@@ -107,19 +119,23 @@ export default function AdminPage() {
          toast({ title: "Error", description: "Team 1 and Team 2 cannot be the same.", variant: "destructive" });
          return;
      }
-    updateLiveScore(liveScoreData as LiveMatchScoreData);
-    toast({ title: "Success", description: "Live score updated." });
+    setIsSaving(true);
+    await updateLiveScore(liveScoreData as LiveMatchScoreData); // Call context function
+    setIsSaving(false);
+    // Toast handled by context or implicitly by UI update
   };
 
-  const handleClearLiveScore = () => {
+  const handleClearLiveScore = async () => {
      const clearedScore = {
        team1: '', team1SetScore: 0, team1CurrentPoints: 0,
        team2: '', team2SetScore: 0, team2CurrentPoints: 0,
        status: '',
        matchType: '',
      };
-     setLiveScoreData(clearedScore);
-     updateLiveScore(null);
+     setIsSaving(true);
+     setLiveScoreData(clearedScore); // Update local state immediately for responsiveness
+     await updateLiveScore(null); // Send null to Firebase via context
+     setIsSaving(false);
      toast({ title: "Success", description: "Live score cleared." });
    };
 
@@ -127,49 +143,45 @@ export default function AdminPage() {
   const handleStandingChange = (group: 'groupA' | 'groupB', teamIndex: number, field: keyof TeamStanding, value: string | number) => {
     setEditingStandings(prev => {
       if (!prev) return null;
-      const updatedStandings = JSON.parse(JSON.stringify(prev));
-      const numericValue = typeof value === 'string' ? parseInt(value, 10) || 0 : value;
-      if (updatedStandings[group][teamIndex] && field in updatedStandings[group][teamIndex]) {
-          (updatedStandings[group][teamIndex] as any)[field] = numericValue;
+      // Create a deep copy to modify
+       const updatedStandings = JSON.parse(JSON.stringify(prev));
+      // Ensure the value is a number for numeric fields
+      const numericValue = (typeof value === 'string' && !isNaN(parseInt(value))) ? parseInt(value) : (typeof value === 'number' ? value : 0);
+
+      if (updatedStandings[group] && updatedStandings[group][teamIndex] && field in updatedStandings[group][teamIndex]) {
+        // Type assertion needed here as TS doesn't know the exact type of 'field'
+        (updatedStandings[group][teamIndex] as any)[field] = numericValue;
       } else {
-          console.error(`Field ${field} does not exist on team standing object.`);
+          console.error(`Field ${field} or team at index ${teamIndex} in ${group} is invalid.`);
       }
       return updatedStandings;
     });
   };
 
-  const handleUpdateAllStandings = () => {
-    if (!editingStandings) return;
 
+  const handleUpdateAllStandings = async () => {
+    if (!editingStandings) {
+        toast({ title: "Error", description: "No standings data to save.", variant: "destructive" });
+        return;
+    }
+    setIsSaving(true);
     try {
-        editingStandings.groupA.forEach((team, index) => {
-            const originalIndex = standings?.groupA.findIndex(t => t.name === team.name);
-            if (originalIndex !== undefined && originalIndex !== -1) {
-                updateTeamStanding('groupA', originalIndex, team);
-            } else {
-                 console.warn(`Could not find original index for team ${team.name} in Group A during update.`);
-            }
-        });
-        editingStandings.groupB.forEach((team, index) => {
-             const originalIndex = standings?.groupB.findIndex(t => t.name === team.name);
-             if (originalIndex !== undefined && originalIndex !== -1) {
-                updateTeamStanding('groupB', originalIndex, team);
-             } else {
-                 console.warn(`Could not find original index for team ${team.name} in Group B during update.`);
-             }
-        });
-        toast({ title: "Success", description: "All standings updated." });
-    } catch (error: any) {
-         toast({ title: "Error updating standings", description: error.message, variant: "destructive" });
+        await updateAllStandings(editingStandings); // Call the context function
+        toast({ title: "Success", description: "Standings updated globally." });
+    } catch (error: any) { // Catch potential errors from the async operation (though context handles it)
+        toast({ title: "Error", description: `Failed to update standings: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsSaving(false);
     }
   };
+
 
   const allTeams = [...teams.groupA, ...teams.groupB];
 
   // Authentication Modal
   if (!isAuthenticated) {
     return (
-        <Dialog open={true} onOpenChange={() => { /* Prevent closing by clicking outside */ }}>
+        <Dialog open={true} onOpenChange={() => { /* Prevent closing */ }}>
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -186,27 +198,27 @@ export default function AdminPage() {
                         </Label>
                         <Input
                             id="authCode"
-                            type="password" // Hide the code input
+                            type="password"
                             value={authCodeInput}
                             onChange={handleAuthCodeChange}
                             className="col-span-3"
-                            onKeyDown={(e) => e.key === 'Enter' && handleAuthenticate()} // Allow Enter key submission
+                            onKeyDown={(e) => e.key === 'Enter' && handleAuthenticate()}
                         />
                     </div>
                     {authError && (
                         <p className="text-sm text-destructive text-center">{authError}</p>
                     )}
                 </div>
-                <DialogFooter className="flex flex-col sm:flex-row justify-between gap-2">
-                    {/* Home Button */}
-                    <Link href="/">
-                        <Button variant="outline">
-                             <Home className="mr-2 h-4 w-4" /> Go to Home
-                        </Button>
-                    </Link>
-                    {/* Authenticate Button */}
-                    <Button onClick={handleAuthenticate}>Authenticate</Button>
-                </DialogFooter>
+                <DialogFooter className="flex flex-col sm:flex-row justify-between items-center gap-2">
+                     {/* Home Button */}
+                     <Link href="/" className="w-full sm:w-auto">
+                         <Button variant="outline" className="w-full">
+                              <Home className="mr-2 h-4 w-4" /> Go to Home
+                         </Button>
+                     </Link>
+                     {/* Authenticate Button */}
+                     <Button onClick={handleAuthenticate} className="w-full sm:w-auto">Authenticate</Button>
+                 </DialogFooter>
             </DialogContent>
         </Dialog>
     );
@@ -222,7 +234,7 @@ export default function AdminPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Update Live Score</CardTitle>
-          <CardDescription>Set the current live match details, including match type.</CardDescription>
+          <CardDescription>Set the current live match details, including match type. Updates are global.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdateLiveScore} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -284,14 +296,16 @@ export default function AdminPage() {
                      <Label htmlFor="matchTypeSelect">Match Type</Label>
                      <Select
                         name="matchType"
-                        value={liveScoreData.matchType === '' ? NONE_MATCH_TYPE_VALUE : liveScoreData.matchType || NONE_MATCH_TYPE_VALUE}
+                        // Use NONE_MATCH_TYPE_VALUE for the placeholder/none option
+                        value={liveScoreData.matchType ? liveScoreData.matchType : NONE_MATCH_TYPE_VALUE}
                         onValueChange={handleMatchTypeChange}
                       >
                         <SelectTrigger id="matchTypeSelect">
                             <SelectValue placeholder="Select Match Type" />
                         </SelectTrigger>
                         <SelectContent>
-                            <SelectItem key={NONE_MATCH_TYPE_VALUE} value={NONE_MATCH_TYPE_VALUE}>
+                             {/* Add a specific "None" option */}
+                            <SelectItem value={NONE_MATCH_TYPE_VALUE}>
                                 None
                             </SelectItem>
                             {matchTypes.map(type => (
@@ -307,10 +321,12 @@ export default function AdminPage() {
 
             {/* Submit Button */}
             <div className="md:col-span-2 flex justify-end gap-2">
-                 <Button type="button" variant="outline" onClick={handleClearLiveScore} disabled={isLoading}>
-                    Clear Live Score
+                 <Button type="button" variant="outline" onClick={handleClearLiveScore} disabled={isSaving || isLoading}>
+                    {isSaving ? 'Clearing...' : 'Clear Live Score'}
                  </Button>
-                 <Button type="submit" disabled={isLoading}>Update Live Score</Button>
+                 <Button type="submit" disabled={isSaving || isLoading}>
+                    {isSaving ? 'Updating...' : 'Update Live Score'}
+                 </Button>
             </div>
           </form>
         </CardContent>
@@ -320,11 +336,11 @@ export default function AdminPage() {
       <Card>
         <CardHeader>
           <CardTitle>Update Group Standings</CardTitle>
-           <CardDescription>Manually edit the standings for each team. Remember to save changes.</CardDescription>
+           <CardDescription>Manually edit the standings for each team. Save changes to update globally.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && !editingStandings ? (
-            <p>Loading standings...</p>
+            <p className="text-center text-muted-foreground py-4">Loading standings...</p>
           ) : editingStandings ? (
             <>
               {(['groupA', 'groupB'] as Array<keyof GroupStandings>).map((groupKey) => (
@@ -345,16 +361,18 @@ export default function AdminPage() {
                       {editingStandings[groupKey].map((team, index) => (
                         <TableRow key={team.name}>
                           <TableCell>{team.name}</TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
+                           {/* Ensure input types are 'number' and use controlled components */}
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
+                           {/* Points and BP can be negative, remove min="0" */}
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
                         </TableRow>
                       ))}
                        {editingStandings[groupKey].length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground">No teams in this group yet.</TableCell>
+                                <TableCell colSpan={6} className="text-center text-muted-foreground py-4">No teams in this group yet.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
@@ -362,11 +380,13 @@ export default function AdminPage() {
                 </div>
               ))}
                <div className="flex justify-end mt-4">
-                    <Button onClick={handleUpdateAllStandings} disabled={isLoading}>Save Standings Changes</Button>
+                     <Button onClick={handleUpdateAllStandings} disabled={isSaving || isLoading}>
+                        {isSaving ? 'Saving...' : 'Save Standings Changes'}
+                    </Button>
                </div>
             </>
           ) : (
-            <p className="text-muted-foreground">Standings data not available.</p>
+            <p className="text-center text-muted-foreground py-4">Standings data not available or failed to load.</p>
           )}
         </CardContent>
       </Card>
