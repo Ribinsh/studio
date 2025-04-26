@@ -55,6 +55,7 @@ export default function AdminPage() {
             matchType: '',
         });
      }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveMatch]); // Removed liveScoreData dependency to avoid loops
 
   // Update local standings state when context changes
@@ -67,6 +68,7 @@ export default function AdminPage() {
      } else if (!standings && editingStandings !== null && !isSaving) {
         setEditingStandings(null); // Clear if context is null
      }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [standings, isSaving]); // Add isSaving dependency
 
 
@@ -166,6 +168,7 @@ export default function AdminPage() {
     }
     setIsSaving(true);
     try {
+        // No need for null check on database here, context function handles it
         await updateAllStandings(editingStandings); // Call the context function
         toast({ title: "Success", description: "Standings updated globally." });
     } catch (error: any) { // Catch potential errors from the async operation (though context handles it)
@@ -362,12 +365,12 @@ export default function AdminPage() {
                         <TableRow key={team.name}>
                           <TableCell>{team.name}</TableCell>
                            {/* Ensure input types are 'number' and use controlled components */}
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', parseInt(e.target.value) || 0)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'wins', parseInt(e.target.value) || 0)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'losses', parseInt(e.target.value) || 0)} /></TableCell>
                            {/* Points and BP can be negative, remove min="0" */}
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'points', parseInt(e.target.value) || 0)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', parseInt(e.target.value) || 0)} /></TableCell>
                         </TableRow>
                       ))}
                        {editingStandings[groupKey].length === 0 && (

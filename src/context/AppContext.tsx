@@ -5,7 +5,7 @@ import type React from 'react';
 import { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { LiveMatchScoreData, GroupStandings, TeamStanding } from '@/lib/types';
 import { sortStandingsDisplay } from '@/lib/standings';
-import { database } from '@/lib/firebase'; // Import Firebase database instance
+import { database } from '@/lib/firebase'; // Import Firebase database instance (can be null)
 import { ref, set, onValue, off, get } from 'firebase/database'; // Import Firebase Realtime DB functions
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 
@@ -39,6 +39,10 @@ const createInitialStanding = (teamName: string): TeamStanding => ({
 
 // Helper to initialize standings for given teams
 const initializeFirebaseStandings = async (currentTeams: { groupA: string[]; groupB: string[] }) => {
+    if (!database) {
+        console.error("AppContext: Cannot initialize standings, Firebase database is not available.");
+        return null;
+    }
     console.log("AppContext: Initializing Firebase standings for teams:", currentTeams);
     const initialGroupA = currentTeams.groupA.map(createInitialStanding);
     const initialGroupB = currentTeams.groupB.map(createInitialStanding);
@@ -79,6 +83,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // --- Fetch data from Firebase on initial mount and listen for updates ---
   useEffect(() => {
+    // Only proceed if database is initialized
+    if (!database) {
+        console.error("AppContext: Firebase database not initialized. Cannot set up listeners.");
+        setIsLoading(false); // Set loading to false as we can't load data
+        toast({
+            title: "Configuration Error",
+            description: "Could not connect to the database. Please check the setup.",
+            variant: "destructive",
+            duration: 10000, // Show for longer
+        });
+        return; // Exit useEffect early
+    }
+
     console.log("AppContext: Setting up Firebase listeners...");
     setIsLoading(true);
 
@@ -132,8 +149,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Cleanup listeners on component unmount
     return () => {
       console.log("AppContext: Cleaning up Firebase listeners.");
-      off(liveMatchRef, 'value', liveMatchListener);
-      off(standingsRef, 'value', standingsListener);
+      // Check if database exists before calling off
+      if(database) {
+          off(liveMatchRef, 'value', liveMatchListener);
+          off(standingsRef, 'value', standingsListener);
+      }
     };
   // Run only once on mount
   }, [toast]); // Add toast to dependency array
@@ -142,6 +162,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- Action Functions ---
 
   const updateLiveScore = useCallback(async (scoreData: LiveMatchScoreData | null) => {
+     if (!database) {
+         console.error("AppContext: Cannot update live score, Firebase database is not available.");
+         toast({ title: "Error", description: "Database connection unavailable.", variant: "destructive" });
+         return;
+     }
      console.log("AppContext: Updating live score in Firebase:", scoreData);
      try {
         // Ensure matchType exists, default to empty string if not provided
@@ -157,6 +182,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
 
   const updateAllStandings = useCallback(async (updatedStandings: GroupStandings) => {
+       if (!database) {
+           console.error("AppContext: Cannot update standings, Firebase database is not available.");
+           toast({ title: "Error", description: "Database connection unavailable.", variant: "destructive" });
+           return;
+       }
        console.log("AppContext: Updating all standings in Firebase:", updatedStandings);
        if (!updatedStandings || !updatedStandings.groupA || !updatedStandings.groupB) {
             toast({ title: "Error", description: "Invalid standings data provided.", variant: "destructive" });
