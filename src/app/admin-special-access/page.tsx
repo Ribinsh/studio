@@ -251,8 +251,8 @@ export default function AdminPage() {
                          <SelectValue placeholder="Select Team 1" />
                       </SelectTrigger>
                       <SelectContent>
-                         {/* Add a placeholder/default item */}
-                         <SelectItem value="" disabled>Select Team 1</SelectItem>
+                         {/* Use NONE_MATCH_TYPE_VALUE for the placeholder/default item */}
+                         <SelectItem value={NONE_MATCH_TYPE_VALUE} disabled>Select Team 1</SelectItem>
                          {allTeams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
                       </SelectContent>
                  </Select>
@@ -277,8 +277,8 @@ export default function AdminPage() {
                           <SelectValue placeholder="Select Team 2" />
                        </SelectTrigger>
                        <SelectContent>
-                           {/* Add a placeholder/default item */}
-                           <SelectItem value="" disabled>Select Team 2</SelectItem>
+                           {/* Use NONE_MATCH_TYPE_VALUE for the placeholder/default item */}
+                           <SelectItem value={NONE_MATCH_TYPE_VALUE} disabled>Select Team 2</SelectItem>
                           {allTeams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
                        </SelectContent>
                   </Select>
