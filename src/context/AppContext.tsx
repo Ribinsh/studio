@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type React from 'react';
@@ -86,9 +87,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       console.log("AppContext: Using fixed initial team data.");
 
       if (storedLiveMatch) {
-        setLiveMatch(JSON.parse(storedLiveMatch));
+        const parsedMatch = JSON.parse(storedLiveMatch);
+        // Ensure matchType exists, default to empty string if not
+        setLiveMatch({ ...parsedMatch, matchType: parsedMatch.matchType || '' });
         console.log("AppContext: Loaded live match from localStorage.");
+      } else {
+         setLiveMatch(null); // Ensure it's null if nothing stored
       }
+
 
       if (storedStandings) {
           const parsedStandings = JSON.parse(storedStandings);
@@ -163,7 +169,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Removed addTeam function
 
   const updateLiveScore = useCallback((scoreData: LiveMatchScoreData | null) => {
-    setLiveMatch(scoreData);
+    // Ensure matchType is always present (default to empty string) when setting
+    setLiveMatch(scoreData ? { ...scoreData, matchType: scoreData.matchType || '' } : null);
     console.log("AppContext: Updated live score.");
   }, []);
 
@@ -204,4 +211,3 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
-

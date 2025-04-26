@@ -1,4 +1,5 @@
 
+
 /**
  * Represents the standings of a single team.
  */
@@ -66,4 +67,9 @@ export interface LiveMatchScoreData {
    * Optional status like "Live", "Timeout", "Finished Set", etc.
    */
   status?: string;
+   /**
+    * Optional type of the match.
+    */
+   matchType?: 'Group Stage' | 'Qualifier' | 'Exhibition' | 'Semi-Final' | 'Final' | ''; // Add matchType
 }
+

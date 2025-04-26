@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import type { ChangeEvent, FormEvent } from 'react';
@@ -14,6 +15,9 @@ import type { LiveMatchScoreData, TeamStanding, GroupStandings } from '@/lib/typ
 import { useToast } from '@/hooks/use-toast';
 // Removed Separator import as it's no longer needed
 
+// Define Match Types
+const matchTypes: LiveMatchScoreData['matchType'][] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final', ''];
+
 export default function AdminPage() {
   // Removed addTeam from context destructuring
   const { teams, liveMatch, standings, updateLiveScore, updateTeamStanding, isLoading } = useContext(AppContext);
@@ -24,6 +28,7 @@ export default function AdminPage() {
     team1: '', team1SetScore: 0, team1CurrentPoints: 0,
     team2: '', team2SetScore: 0, team2CurrentPoints: 0,
     status: 'Live',
+    matchType: '', // Initialize matchType
   });
   // Initialize editingStandings with a deep copy or null
    const [editingStandings, setEditingStandings] = useState<GroupStandings | null>(null);
@@ -36,6 +41,7 @@ export default function AdminPage() {
           team1: '', team1SetScore: 0, team1CurrentPoints: 0,
           team2: '', team2SetScore: 0, team2CurrentPoints: 0,
           status: 'Live',
+          matchType: '', // Initialize matchType
         });
     }
   }, [liveMatch]); // Keep liveScoreData out of dependency array
@@ -69,6 +75,13 @@ export default function AdminPage() {
      }));
    };
 
+    const handleMatchTypeChange = (value: string) => {
+        setLiveScoreData(prev => ({
+        ...prev,
+        matchType: value as LiveMatchScoreData['matchType'], // Cast the value
+        }));
+    };
+
   const handleUpdateLiveScore = (e: FormEvent) => {
     e.preventDefault();
     if (!liveScoreData.team1 || !liveScoreData.team2) {
@@ -88,6 +101,7 @@ export default function AdminPage() {
        team1: '', team1SetScore: 0, team1CurrentPoints: 0,
        team2: '', team2SetScore: 0, team2CurrentPoints: 0,
        status: '',
+       matchType: '', // Clear matchType as well
      };
      setLiveScoreData(clearedScore);
      updateLiveScore(null); // Clear in context
@@ -152,7 +166,7 @@ export default function AdminPage() {
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Update Live Score</CardTitle>
-          <CardDescription>Set the current live match details.</CardDescription>
+          <CardDescription>Set the current live match details, including match type.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdateLiveScore} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -204,10 +218,23 @@ export default function AdminPage() {
               </div>
             </div>
 
-             {/* Match Status */}
-             <div className="md:col-span-2">
-                 <Label htmlFor="status">Match Status (Optional)</Label>
-                 <Input id="status" name="status" type="text" placeholder="e.g., Live, Timeout, Set Finished" value={liveScoreData.status || ''} onChange={handleLiveScoreChange} />
+             {/* Match Status & Type */}
+             <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div>
+                     <Label htmlFor="status">Match Status (Optional)</Label>
+                     <Input id="status" name="status" type="text" placeholder="e.g., Live, Timeout, Set Finished" value={liveScoreData.status || ''} onChange={handleLiveScoreChange} />
+                 </div>
+                 <div>
+                    <Label htmlFor="matchTypeSelect">Match Type</Label>
+                     <Select name="matchType" value={liveScoreData.matchType || ''} onValueChange={handleMatchTypeChange}>
+                          <SelectTrigger id="matchTypeSelect">
+                             <SelectValue placeholder="Select Match Type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                             {matchTypes.map(type => <SelectItem key={type} value={type || ''}>{type || 'None'}</SelectItem>)}
+                          </SelectContent>
+                     </Select>
+                </div>
              </div>
 
 
@@ -244,6 +271,7 @@ export default function AdminPage() {
                         <TableHead className="text-center">W</TableHead>
                         <TableHead className="text-center">L</TableHead>
                         <TableHead className="text-center">Pts</TableHead>
+                        {/* Make BP accept positive/negative numbers */}
                         <TableHead className="text-center">BP</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -255,7 +283,7 @@ export default function AdminPage() {
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
-                           {/* Make BP accept positive/negative numbers */}
+                           {/* Ensure BP input is flexible */}
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
                         </TableRow>
                       ))}
@@ -280,3 +308,4 @@ export default function AdminPage() {
     </div>
   );
 }
+

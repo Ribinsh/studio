@@ -1,9 +1,11 @@
 
+
 import type React from 'react';
 import type { LiveMatchScoreData } from '@/lib/types'; // Use type from lib
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { TvIcon, HourglassIcon } from 'lucide-react'; // Using TvIcon or HourglassIcon
+import { Badge } from "@/components/ui/badge"; // Import Badge
 
 interface LiveMatchDisplayProps {
   liveMatch: LiveMatchScoreData | null | undefined;
@@ -28,6 +30,7 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
     team1CurrentPoints = 0,
     team2CurrentPoints = 0,
     status,
+    matchType, // Destructure matchType
   } = liveMatch;
 
   // Determine leading team for potential styling based on current points and sets
@@ -38,6 +41,13 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
 
   return (
     <div className="flex flex-col items-center justify-center text-center">
+
+        {/* Display Match Type */}
+        {matchType && (
+             <Badge variant="secondary" className="text-sm px-3 py-1 mb-3">
+                {matchType}
+             </Badge>
+         )}
 
        {/* Optional: Display Status */}
        {status && status.toLowerCase() !== 'live' && status.trim() !== '' && ( // Display if status is not empty or 'live'
