@@ -5,8 +5,8 @@ import type React from 'react';
 import { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { LiveMatchScoreData, GroupStandings, TeamStanding } from '@/lib/types';
 import { sortStandingsDisplay } from '@/lib/standings';
-import { database } from '@/lib/firebase'; // Import Firebase database instance (can be null)
-import { ref, set, onValue, off, get } from 'firebase/database'; // Import Firebase Realtime DB functions
+import { useSubscription, useMutation, ApolloError } from '@apollo/client';
+import { SUBSCRIBE_LIVE_MATCH, UPDATE_LIVE_MATCH, CLEAR_LIVE_MATCH, SUBSCRIBE_STANDINGS, UPSERT_STANDINGS } from '@/graphql/operations';
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 
 // Define the shape of the context data
@@ -15,8 +15,9 @@ interface AppContextProps {
   liveMatch: LiveMatchScoreData | null;
   standings: GroupStandings | null;
   isLoading: boolean;
+  error: ApolloError | null; // To store potential GraphQL errors
   updateLiveScore: (scoreData: LiveMatchScoreData | null) => Promise<void>; // Make async
-  updateAllStandings: (updatedStandings: GroupStandings) => Promise<void>; // New function to update all standings
+  updateAllStandings: (updatedStandings: GroupStandings) => Promise<void>; // For batch updates
 }
 
 // Initial teams based on the provided fixture - remains static for now
@@ -25,56 +26,13 @@ const initialTeamsData = {
   groupB: ["Kizhisseri", "Kizhakkoth", "Kakkancheri"]
 };
 
-// Helper to create initial standing for a team
-const createInitialStanding = (teamName: string): TeamStanding => ({
-    name: teamName,
-    matchesPlayed: 0,
-    wins: 0,
-    losses: 0,
-    setsWon: 0,
-    setsLost: 0,
-    points: 0,
-    breakPoints: 0,
-});
-
-// Helper to initialize standings for given teams if they don't exist in Firebase
-const initializeFirebaseStandings = async (currentTeams: { groupA: string[]; groupB: string[] }) => {
-    if (!database) {
-        console.error("AppContext: Cannot initialize standings, Firebase database is not available.");
-        return null;
-    }
-    console.log("AppContext: Attempting to initialize Firebase standings for teams:", currentTeams);
-    const initialGroupA = currentTeams.groupA.map(createInitialStanding);
-    const initialGroupB = currentTeams.groupB.map(createInitialStanding);
-    const initialStandings: GroupStandings = {
-        groupA: sortStandingsDisplay(initialGroupA),
-        groupB: sortStandingsDisplay(initialGroupB),
-    };
-    try {
-        // Only set if standings are truly empty/non-existent
-        const standingsRef = ref(database, 'standings');
-        const snapshot = await get(standingsRef);
-        if (!snapshot.exists() || !snapshot.val() || !snapshot.val().groupA || !snapshot.val().groupB) {
-            await set(standingsRef, initialStandings);
-            console.log("AppContext: Initialized and saved standings to Firebase because they were missing.");
-            return initialStandings;
-        } else {
-            console.log("AppContext: Standings already exist in Firebase, skipping initialization.");
-            return snapshot.val() as GroupStandings; // Return existing data
-        }
-    } catch (error) {
-        console.error("AppContext: Failed to initialize/check standings in Firebase:", error);
-        return null; // Return null on failure
-    }
-};
-
-
 // Create the context with a default value
 export const AppContext = createContext<AppContextProps>({
   teams: initialTeamsData,
   liveMatch: null,
   standings: null,
   isLoading: true,
+  error: null,
   updateLiveScore: async () => {},
   updateAllStandings: async () => {},
 });
@@ -87,136 +45,178 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [teams] = useState<{ groupA: string[]; groupB: string[] }>(initialTeamsData);
   const [liveMatch, setLiveMatch] = useState<LiveMatchScoreData | null>(null);
   const [standings, setStandings] = useState<GroupStandings | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [appError, setAppError] = useState<ApolloError | null>(null); // Local state for errors
+  const [isStandingsLoading, setIsStandingsLoading] = useState(true);
+  const [isLiveMatchLoading, setIsLiveMatchLoading] = useState(true);
 
-  // --- Fetch data from Firebase on initial mount and listen for updates ---
+  // --- Hasura Subscriptions ---
+
+  // Subscribe to Live Match Data
+   const { data: liveMatchData, loading: liveMatchLoading, error: liveMatchError } = useSubscription<{ live_match: any[] }>(SUBSCRIBE_LIVE_MATCH);
+
   useEffect(() => {
-    // Only proceed if database is initialized
-    if (!database) {
-        console.error("AppContext: Firebase database not initialized. Cannot set up listeners.");
-        setIsLoading(false); // Set loading to false as we can't load data
-        toast({
-            title: "Configuration Error",
-            description: "Could not connect to the database. Please check the setup.",
-            variant: "destructive",
-            duration: 10000, // Show for longer
-        });
-        return; // Exit useEffect early
-    }
-
-    console.log("AppContext: Setting up Firebase listeners...");
-    setIsLoading(true);
-
-    const liveMatchRef = ref(database, 'liveMatch');
-    const standingsRef = ref(database, 'standings');
-
-    // Listener for Live Match Data
-    const liveMatchListener = onValue(liveMatchRef, (snapshot) => {
-      const data = snapshot.val();
-      console.log("AppContext: Received liveMatch update from Firebase:", data);
-      // Ensure matchType exists, default to empty string if missing in DB
-      setLiveMatch(data ? { ...data, matchType: data.matchType || '' } : null);
-    }, (error) => {
-      console.error("AppContext: Firebase liveMatch listener error:", error);
+    setIsLiveMatchLoading(liveMatchLoading);
+    if (liveMatchError) {
+      console.error("AppContext: Hasura liveMatch subscription error:", liveMatchError);
+      setAppError(liveMatchError);
+      setLiveMatch(null); // Clear live match on error
       toast({ title: "Error", description: "Could not sync live match data.", variant: "destructive" });
-      // Optionally set liveMatch to null or keep existing state on error
-      setLiveMatch(null); // Clear on error
-    });
-
-    // Listener for Standings Data
-    const standingsListener = onValue(standingsRef, (snapshot) => {
-        const data: GroupStandings | null = snapshot.val();
-        console.log("AppContext: Received standings update from Firebase:", data);
-        if (data && data.groupA && data.groupB) {
-             // Ensure sorting on fetch/update
-             const sortedData = {
-                 groupA: sortStandingsDisplay(data.groupA),
-                 groupB: sortStandingsDisplay(data.groupB),
-             };
-            setStandings(sortedData);
-             setIsLoading(false); // Set loading false after successful data fetch
-        } else {
-            console.log("AppContext: Standings data from Firebase is null or invalid. Attempting to initialize.");
-            // Attempt to initialize if data is missing/invalid
-            initializeFirebaseStandings(initialTeamsData).then(initializedData => {
-                if (initializedData) {
-                    setStandings(initializedData); // Set local state after initializing FB
-                } else {
-                     setStandings(null); // Set to null if initialization failed
-                     toast({ title: "Warning", description: "Could not initialize standings data.", variant: "destructive" });
-                }
-                setIsLoading(false); // Set loading false after initialization attempt
-            });
-        }
-    }, (error) => {
-        console.error("AppContext: Firebase standings listener error:", error);
-        toast({ title: "Error", description: "Could not sync standings data.", variant: "destructive" });
-        setIsLoading(false); // Set loading false even on error
-        setStandings(null); // Set standings to null on error
-    });
+    } else if (liveMatchData && liveMatchData.live_match.length > 0) {
+        const rawMatch = liveMatchData.live_match[0];
+        // Transform Hasura data (snake_case) to camelCase for LiveMatchScoreData
+        setLiveMatch({
+            team1: rawMatch.team1,
+            team1SetScore: rawMatch.team1_set_score,
+            team1CurrentPoints: rawMatch.team1_current_points,
+            team2: rawMatch.team2,
+            team2SetScore: rawMatch.team2_set_score,
+            team2CurrentPoints: rawMatch.team2_current_points,
+            status: rawMatch.status || '', // Default to empty string if null
+            matchType: rawMatch.match_type || '', // Default to empty string if null
+        });
+        setAppError(null); // Clear error on successful data fetch
+    } else if (!liveMatchLoading) {
+        // Data is empty, but not loading and no error
+        setLiveMatch(null);
+         setAppError(null);
+    }
+  }, [liveMatchData, liveMatchLoading, liveMatchError, toast]);
 
 
-    // Cleanup listeners on component unmount
-    return () => {
-      console.log("AppContext: Cleaning up Firebase listeners.");
-      // Check if database exists before calling off
-      if(database) {
-          off(liveMatchRef, 'value', liveMatchListener);
-          off(standingsRef, 'value', standingsListener);
-      }
-    };
-  // Run only once on mount
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]); // Add toast to dependency array
+  // Subscribe to Standings Data
+   const { data: standingsData, loading: standingsLoading, error: standingsError } = useSubscription<{ standings: any[] }>(SUBSCRIBE_STANDINGS);
 
+   useEffect(() => {
+     setIsStandingsLoading(standingsLoading);
+     if (standingsError) {
+       console.error("AppContext: Hasura standings subscription error:", standingsError);
+       setAppError(standingsError);
+       setStandings(null); // Clear standings on error
+       toast({ title: "Error", description: "Could not sync standings data.", variant: "destructive" });
+     } else if (standingsData && standingsData.standings) {
+        // Process and group standings data
+        const groupA: TeamStanding[] = [];
+        const groupB: TeamStanding[] = [];
 
-  // --- Action Functions ---
+        standingsData.standings.forEach((rawStanding: any) => {
+           const teamStanding: TeamStanding = {
+               name: rawStanding.name,
+               matchesPlayed: rawStanding.matches_played,
+               wins: rawStanding.wins,
+               losses: rawStanding.losses,
+               setsWon: rawStanding.sets_won,
+               setsLost: rawStanding.sets_lost,
+               points: rawStanding.points,
+               breakPoints: rawStanding.break_points,
+           };
+           if (rawStanding.group_key === 'A') {
+               groupA.push(teamStanding);
+           } else if (rawStanding.group_key === 'B') {
+               groupB.push(teamStanding);
+           }
+        });
+
+        // Ensure sorting after grouping
+        setStandings({
+            groupA: sortStandingsDisplay(groupA),
+            groupB: sortStandingsDisplay(groupB),
+        });
+        setAppError(null); // Clear error on successful data fetch
+     } else if (!standingsLoading) {
+        // Data is empty, but not loading and no error
+        setStandings(null);
+        setAppError(null);
+     }
+   }, [standingsData, standingsLoading, standingsError, toast]);
+
+   // Determine overall loading state
+   const isLoading = useMemo(() => isStandingsLoading || isLiveMatchLoading, [isStandingsLoading, isLiveMatchLoading]);
+
+  // --- Hasura Mutations ---
+  const [updateLiveMatchMutation] = useMutation(UPDATE_LIVE_MATCH);
+  const [clearLiveMatchMutation] = useMutation(CLEAR_LIVE_MATCH);
+  const [upsertStandingsMutation] = useMutation(UPSERT_STANDINGS);
+
 
   const updateLiveScore = useCallback(async (scoreData: LiveMatchScoreData | null) => {
-     if (!database) {
-         console.error("AppContext: Cannot update live score, Firebase database is not available.");
-         toast({ title: "Error", description: "Database connection unavailable.", variant: "destructive" });
-         return;
+     console.log("AppContext: Updating live score via Hasura:", scoreData);
+     if (scoreData === null) {
+        // Clear the live match data
+        try {
+             await clearLiveMatchMutation();
+             // No toast here, success implied by UI update via subscription
+        } catch (error: any) {
+             console.error("AppContext: Failed to clear live score in Hasura:", error);
+             toast({ title: "Error", description: `Failed to clear live score: ${error.message}`, variant: "destructive" });
+        }
+     } else {
+        // Update or insert the live match data
+        try {
+             // Transform camelCase to snake_case for Hasura mutation input
+             const hasuraInput = {
+                 // Assuming a fixed ID or letting Hasura handle the singleton logic
+                 // id: 1, // Include if your table has an ID column
+                 team1: scoreData.team1,
+                 team1_set_score: scoreData.team1SetScore,
+                 team1_current_points: scoreData.team1CurrentPoints,
+                 team2: scoreData.team2,
+                 team2_set_score: scoreData.team2SetScore,
+                 team2_current_points: scoreData.team2CurrentPoints,
+                 status: scoreData.status || "", // Ensure non-null
+                 match_type: scoreData.matchType || "", // Ensure non-null
+             };
+             await updateLiveMatchMutation({ variables: { object: hasuraInput } });
+             // No toast here, success implied by UI update via subscription
+        } catch (error: any) {
+             console.error("AppContext: Failed to update live score in Hasura:", error);
+             toast({ title: "Error", description: `Failed to update live score: ${error.message}`, variant: "destructive" });
+        }
      }
-     console.log("AppContext: Updating live score in Firebase:", scoreData);
-     try {
-        // Ensure matchType exists, default to empty string if not provided
-        const dataToSet = scoreData ? { ...scoreData, matchType: scoreData.matchType || '' } : null;
-        await set(ref(database, 'liveMatch'), dataToSet);
-        // No toast here to avoid flooding, success is implied by UI update
-        // toast({ title: "Success", description: "Live score updated globally." });
-     } catch (error: any) {
-        console.error("AppContext: Failed to update live score in Firebase:", error);
-        toast({ title: "Error", description: `Failed to update live score: ${error.message}`, variant: "destructive" });
-     }
-  }, [toast]);
+  }, [toast, updateLiveMatchMutation, clearLiveMatchMutation]);
 
 
   const updateAllStandings = useCallback(async (updatedStandings: GroupStandings) => {
-       if (!database) {
-           console.error("AppContext: Cannot update standings, Firebase database is not available.");
-           toast({ title: "Error", description: "Database connection unavailable.", variant: "destructive" });
-           return;
-       }
-       console.log("AppContext: Updating all standings in Firebase:", updatedStandings);
+    console.log("AppContext: Updating all standings via Hasura:", updatedStandings);
        if (!updatedStandings || !updatedStandings.groupA || !updatedStandings.groupB) {
             toast({ title: "Error", description: "Invalid standings data provided.", variant: "destructive" });
             return;
        }
+
+       // Combine group A and B and transform to Hasura input format
+       const hasuraObjects = [
+           ...updatedStandings.groupA.map(team => ({
+               group_key: 'A',
+               name: team.name,
+               matches_played: team.matchesPlayed,
+               wins: team.wins,
+               losses: team.losses,
+               sets_won: team.setsWon,
+               sets_lost: team.setsLost,
+               points: team.points,
+               break_points: team.breakPoints,
+           })),
+           ...updatedStandings.groupB.map(team => ({
+               group_key: 'B',
+               name: team.name,
+               matches_played: team.matchesPlayed,
+               wins: team.wins,
+               losses: team.losses,
+               sets_won: team.setsWon,
+               sets_lost: team.setsLost,
+               points: team.points,
+               break_points: team.breakPoints,
+           })),
+       ];
+
        try {
-           // Ensure the standings being saved are sorted correctly
-           const sortedStandings = {
-               groupA: sortStandingsDisplay(updatedStandings.groupA),
-               groupB: sortStandingsDisplay(updatedStandings.groupB),
-           };
-           await set(ref(database, 'standings'), sortedStandings);
-           // Toast moved to Admin page upon successful save action
+           await upsertStandingsMutation({ variables: { objects: hasuraObjects } });
+           // Toast might be better handled in the admin page after successful mutation call
            // toast({ title: "Success", description: "Standings updated globally." });
        } catch (error: any) {
-           console.error("AppContext: Failed to update standings in Firebase:", error);
+           console.error("AppContext: Failed to update standings in Hasura:", error);
            toast({ title: "Error", description: `Failed to update standings: ${error.message}`, variant: "destructive" });
        }
-   }, [toast]);
+   }, [toast, upsertStandingsMutation]);
 
 
   // Memoize the context value
@@ -225,9 +225,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      liveMatch,
      standings,
      isLoading,
+     error: appError, // Pass the error state
      updateLiveScore,
-     updateAllStandings, // Use the new function name
-  }), [teams, liveMatch, standings, isLoading, updateLiveScore, updateAllStandings]);
+     updateAllStandings,
+  }), [teams, liveMatch, standings, isLoading, appError, updateLiveScore, updateAllStandings]);
 
   return (
     <AppContext.Provider value={contextValue}>

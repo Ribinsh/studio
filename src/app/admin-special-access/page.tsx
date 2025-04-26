@@ -17,13 +17,13 @@ import { ShieldCheck, Home } from 'lucide-react';
 import Link from 'next/link'; // Import Link for Home button
 
 // Define Match Types
-const matchTypes: Exclude<LiveMatchScoreData['matchType'], ''>[] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final'];
+const matchTypes: Exclude<LiveMatchScoreData['matchType'], '' | undefined>[] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final'];
 const NONE_MATCH_TYPE_VALUE = "__NONE__"; // Use for the "None" option in Select
 const AUTH_CODE = "7000"; // Authentication code
 
 export default function AdminPage() {
-  // Use updateAllStandings instead of updateTeamStanding
-  const { teams, liveMatch, standings, updateLiveScore, updateAllStandings, isLoading } = useContext(AppContext);
+  // Use context which now interacts with Hasura
+  const { teams, liveMatch, standings, updateLiveScore, updateAllStandings, isLoading, error: contextError } = useContext(AppContext);
   const { toast } = useToast();
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -43,7 +43,7 @@ export default function AdminPage() {
   // Update local live score state when context changes (to reflect global updates)
   useEffect(() => {
      // Check if the context data is substantially different before updating local state
-     // This prevents overwriting local edits if context updates while editing
+     // Prevents overwriting local edits if context updates while editing
      if (liveMatch && JSON.stringify(liveMatch) !== JSON.stringify(liveScoreData)) {
         setLiveScoreData({ ...liveMatch }); // Sync with context
      } else if (!liveMatch && liveScoreData && (liveScoreData.team1 || liveScoreData.team2)) {
@@ -97,6 +97,8 @@ export default function AdminPage() {
   };
 
    const handleLiveScoreSelectChange = (name: keyof LiveMatchScoreData, value: string) => {
+     // Prevent selecting the placeholder value
+     if (value === NONE_MATCH_TYPE_VALUE) return;
      setLiveScoreData(prev => ({
        ...prev,
        [name]: value,
@@ -122,9 +124,15 @@ export default function AdminPage() {
          return;
      }
     setIsSaving(true);
-    await updateLiveScore(liveScoreData as LiveMatchScoreData); // Call context function
-    setIsSaving(false);
-    toast({ title: "Success", description: "Live score update sent." }); // Give feedback
+    try {
+        await updateLiveScore(liveScoreData as LiveMatchScoreData); // Call context function (now interacts with Hasura)
+        toast({ title: "Success", description: "Live score update sent." }); // Give feedback
+    } catch (error: any) {
+        // Context likely handles this, but catch just in case
+        toast({ title: "Error", description: `Failed to send live score update: ${error.message}`, variant: "destructive" });
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleClearLiveScore = async () => {
@@ -135,10 +143,17 @@ export default function AdminPage() {
        matchType: '',
      };
      setIsSaving(true);
-     setLiveScoreData(clearedScore); // Update local state immediately for responsiveness
-     await updateLiveScore(null); // Send null to Firebase via context
-     setIsSaving(false);
-     toast({ title: "Success", description: "Live score cleared globally." });
+     setLiveScoreData(clearedScore); // Update local state immediately
+     try {
+        await updateLiveScore(null); // Send null to trigger clear in Hasura via context
+        toast({ title: "Success", description: "Live score cleared globally." });
+     } catch (error: any) {
+         toast({ title: "Error", description: `Failed to clear live score: ${error.message}`, variant: "destructive" });
+         // Optionally revert local state if needed:
+         // setLiveScoreData(liveMatch || clearedScore);
+     } finally {
+        setIsSaving(false);
+     }
    };
 
 
@@ -147,8 +162,9 @@ export default function AdminPage() {
       if (!prev) return null;
       // Create a deep copy to modify
        const updatedStandings = JSON.parse(JSON.stringify(prev));
-      // Ensure the value is a number for numeric fields
-      const numericValue = (typeof value === 'string' && !isNaN(parseInt(value))) ? parseInt(value) : (typeof value === 'number' ? value : 0);
+      // Ensure the value is a number for numeric fields, default to 0 if parsing fails
+      const numericValue = typeof value === 'string' ? (parseInt(value, 10) || 0) : value;
+
 
       if (updatedStandings[group] && updatedStandings[group][teamIndex] && field in updatedStandings[group][teamIndex]) {
         // Type assertion needed here as TS doesn't know the exact type of 'field'
@@ -168,10 +184,10 @@ export default function AdminPage() {
     }
     setIsSaving(true);
     try {
-        // No need for null check on database here, context function handles it
-        await updateAllStandings(editingStandings); // Call the context function
+        // Pass the locally edited standings to the context function
+        await updateAllStandings(editingStandings); // Context function handles Hasura update
         toast({ title: "Success", description: "Standings updated globally." });
-    } catch (error: any) { // Catch potential errors from the async operation (though context handles it)
+    } catch (error: any) { // Catch potential errors from the async operation
         toast({ title: "Error", description: `Failed to update standings: ${error.message}`, variant: "destructive" });
     } finally {
         setIsSaving(false);
@@ -233,11 +249,24 @@ export default function AdminPage() {
     <div className="container mx-auto p-4 md:p-8">
       <h1 className="text-3xl font-bold text-primary mb-6">Admin Panel</h1>
 
+       {/* Display Context Error */}
+        {contextError && (
+           <Card className="mb-6 border-destructive">
+             <CardHeader>
+                <CardTitle className="text-destructive">Data Synchronization Error</CardTitle>
+                <CardDescription className="text-destructive">Could not synchronize data with the server. Please check your connection and the console for details.</CardDescription>
+             </CardHeader>
+              <CardContent>
+                  <pre className="text-xs text-destructive overflow-auto bg-muted p-2 rounded">{JSON.stringify(contextError, null, 2)}</pre>
+              </CardContent>
+           </Card>
+        )}
+
       {/* Update Live Score */}
       <Card className="mb-6">
         <CardHeader>
           <CardTitle>Update Live Score</CardTitle>
-          <CardDescription>Set the current live match details, including match type. Updates are global.</CardDescription>
+          <CardDescription>Set the current live match details, including match type. Updates are global via Hasura.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleUpdateLiveScore} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -248,12 +277,13 @@ export default function AdminPage() {
                 <Label htmlFor="team1Select">Select Team 1</Label>
                  <Select name="team1" value={liveScoreData.team1 || ''} onValueChange={(value) => handleLiveScoreSelectChange('team1', value)}>
                       <SelectTrigger id="team1Select">
+                         {/* Show selected value or placeholder */}
                          <SelectValue placeholder="Select Team 1" />
                       </SelectTrigger>
                       <SelectContent>
-                         {/* Use NONE_MATCH_TYPE_VALUE for the placeholder/default item */}
+                         {/* Add a disabled placeholder item */}
                          <SelectItem value={NONE_MATCH_TYPE_VALUE} disabled>Select Team 1</SelectItem>
-                         {allTeams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
+                         {allTeams.map(team => <SelectItem key={`t1-${team}`} value={team}>{team}</SelectItem>)}
                       </SelectContent>
                  </Select>
               </div>
@@ -277,9 +307,8 @@ export default function AdminPage() {
                           <SelectValue placeholder="Select Team 2" />
                        </SelectTrigger>
                        <SelectContent>
-                           {/* Use NONE_MATCH_TYPE_VALUE for the placeholder/default item */}
-                           <SelectItem value={NONE_MATCH_TYPE_VALUE} disabled>Select Team 2</SelectItem>
-                          {allTeams.map(team => <SelectItem key={team} value={team}>{team}</SelectItem>)}
+                          <SelectItem value={NONE_MATCH_TYPE_VALUE} disabled>Select Team 2</SelectItem>
+                          {allTeams.map(team => <SelectItem key={`t2-${team}`} value={team}>{team}</SelectItem>)}
                        </SelectContent>
                   </Select>
                </div>
@@ -303,17 +332,15 @@ export default function AdminPage() {
                      <Label htmlFor="matchTypeSelect">Match Type</Label>
                      <Select
                         name="matchType"
-                        // Use NONE_MATCH_TYPE_VALUE for the placeholder/none option
-                        value={liveScoreData.matchType ? liveScoreData.matchType : NONE_MATCH_TYPE_VALUE}
+                        value={liveScoreData.matchType || NONE_MATCH_TYPE_VALUE} // Use NONE_MATCH_TYPE_VALUE when no type is selected
                         onValueChange={handleMatchTypeChange}
                       >
                         <SelectTrigger id="matchTypeSelect">
                             <SelectValue placeholder="Select Match Type" />
                         </SelectTrigger>
                         <SelectContent>
-                             {/* Add a specific "None" option */}
                             <SelectItem value={NONE_MATCH_TYPE_VALUE}>
-                                None
+                                None (Clear Type)
                             </SelectItem>
                             {matchTypes.map(type => (
                                 <SelectItem key={type} value={type}>
@@ -343,11 +370,13 @@ export default function AdminPage() {
       <Card>
         <CardHeader>
           <CardTitle>Update Group Standings</CardTitle>
-           <CardDescription>Manually edit the standings for each team. Save changes to update globally.</CardDescription>
+           <CardDescription>Manually edit the standings for each team. Save changes to update globally via Hasura.</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading && !editingStandings ? (
             <p className="text-center text-muted-foreground py-4">Loading standings...</p>
+           ) : contextError && !editingStandings ? ( // Show error if initial load failed
+             <p className="text-center text-destructive py-4">Failed to load standings data.</p>
           ) : editingStandings ? (
             <>
               {(['groupA', 'groupB'] as Array<keyof GroupStandings>).map((groupKey) => (
@@ -360,6 +389,8 @@ export default function AdminPage() {
                         <TableHead className="text-center">MP</TableHead>
                         <TableHead className="text-center">W</TableHead>
                         <TableHead className="text-center">L</TableHead>
+                        <TableHead className="text-center">SW</TableHead> {/* Added Sets Won */}
+                        <TableHead className="text-center">SL</TableHead> {/* Added Sets Lost */}
                         <TableHead className="text-center">Pts</TableHead>
                         <TableHead className="text-center">BP</TableHead>
                       </TableRow>
@@ -368,18 +399,18 @@ export default function AdminPage() {
                       {editingStandings[groupKey].map((team, index) => (
                         <TableRow key={team.name}>
                           <TableCell>{team.name}</TableCell>
-                           {/* Ensure input types are 'number' and use controlled components */}
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', parseInt(e.target.value) || 0)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'wins', parseInt(e.target.value) || 0)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'losses', parseInt(e.target.value) || 0)} /></TableCell>
-                           {/* Points and BP can be negative, remove min="0" */}
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'points', parseInt(e.target.value) || 0)} /></TableCell>
-                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', parseInt(e.target.value) || 0)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.matchesPlayed ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'matchesPlayed', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.setsWon ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'setsWon', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.setsLost ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'setsLost', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
+                          <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints ?? 0} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
                         </TableRow>
                       ))}
                        {editingStandings[groupKey].length === 0 && (
                             <TableRow>
-                                <TableCell colSpan={6} className="text-center text-muted-foreground py-4">No teams in this group yet.</TableCell>
+                                <TableCell colSpan={8} className="text-center text-muted-foreground py-4">No teams in this group yet.</TableCell>
                             </TableRow>
                         )}
                     </TableBody>
