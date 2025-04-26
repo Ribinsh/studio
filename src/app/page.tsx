@@ -70,8 +70,8 @@ export default function Home() {
                 {liveBadgeText}
            </Badge>
          </div>
-          {/* Admin Link */}
-          <Link href="/admin">
+          {/* Admin Link - Update href */}
+          <Link href="/admin-special-access">
             <Button variant="outline" size="icon" className="ml-auto">
               <Wrench className="h-5 w-5" />
               <span className="sr-only">Admin Panel</span>
@@ -138,3 +138,4 @@ export default function Home() {
     </div>
   );
 }
+

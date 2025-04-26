@@ -2,7 +2,7 @@
 'use client';
 
 import type { ChangeEvent, FormEvent } from 'react';
-import React, { useContext, useState, useEffect } from 'react'; // Added useEffect
+import React, { useContext, useState, useEffect } from 'react';
 import { AppContext } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -10,56 +10,69 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import type { LiveMatchScoreData, TeamStanding, GroupStandings } from '@/lib/types'; // Import GroupStandings
+import type { LiveMatchScoreData, TeamStanding, GroupStandings } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-// Removed Separator import as it's no longer needed
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { ShieldCheck, Home } from 'lucide-react';
+import Link from 'next/link'; // Import Link for Home button
 
-// Define Match Types (excluding empty string here)
+// Define Match Types
 const matchTypes: Exclude<LiveMatchScoreData['matchType'], ''>[] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final'];
-// Define a unique value for the "None" option to avoid empty string value in SelectItem
 const NONE_MATCH_TYPE_VALUE = "__NONE__";
+const AUTH_CODE = "7000"; // Authentication code
 
 export default function AdminPage() {
-  // Removed addTeam from context destructuring
   const { teams, liveMatch, standings, updateLiveScore, updateTeamStanding, isLoading } = useContext(AppContext);
   const { toast } = useToast();
 
-  // State for forms - Removed states related to adding teams
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authCodeInput, setAuthCodeInput] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const [liveScoreData, setLiveScoreData] = useState<Partial<LiveMatchScoreData>>(liveMatch || {
     team1: '', team1SetScore: 0, team1CurrentPoints: 0,
     team2: '', team2SetScore: 0, team2CurrentPoints: 0,
     status: 'Live',
-    matchType: '', // Initialize matchType
+    matchType: '',
   });
-  // Initialize editingStandings with a deep copy or null
-   const [editingStandings, setEditingStandings] = useState<GroupStandings | null>(null);
+  const [editingStandings, setEditingStandings] = useState<GroupStandings | null>(null);
 
-  // Update local live score state when context changes (e.g., initial load)
+  // Update local live score state when context changes
   useEffect(() => {
-    // Only update if liveMatch from context is different to avoid unnecessary updates
     if (JSON.stringify(liveMatch) !== JSON.stringify(liveScoreData)) {
         setLiveScoreData(liveMatch || {
           team1: '', team1SetScore: 0, team1CurrentPoints: 0,
           team2: '', team2SetScore: 0, team2CurrentPoints: 0,
           status: 'Live',
-          matchType: '', // Initialize matchType
+          matchType: '',
         });
     }
-  }, [liveMatch]); // Keep liveScoreData out of dependency array
+  }, [liveMatch]);
 
   // Update local standings state when context changes
   useEffect(() => {
-     // Deep copy standings from context only if they differ from local state or local state is null
      if (standings && JSON.stringify(standings) !== JSON.stringify(editingStandings)) {
          setEditingStandings(JSON.parse(JSON.stringify(standings)));
      } else if (!standings && editingStandings !== null) {
-         // Handle case where context standings become null (e.g., reset)
          setEditingStandings(null);
      }
-  }, [standings]); // Keep editingStandings out of dependency array
+  }, [standings]);
 
+  const handleAuthCodeChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setAuthCodeInput(e.target.value);
+    setAuthError(null); // Clear error on input change
+  };
 
-  // Removed handleAddTeam function
+  const handleAuthenticate = () => {
+    if (authCodeInput === AUTH_CODE) {
+      setIsAuthenticated(true);
+      setAuthError(null);
+      toast({ title: "Authentication Successful", description: "Welcome to the Admin Panel." });
+    } else {
+      setAuthError("Incorrect authentication code.");
+      toast({ title: "Authentication Failed", description: "Incorrect code entered.", variant: "destructive" });
+    }
+  };
 
   const handleLiveScoreChange = (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -77,11 +90,10 @@ export default function AdminPage() {
    };
 
     const handleMatchTypeChange = (value: string) => {
-        // Map the special value back to empty string for state
         const actualValue = value === NONE_MATCH_TYPE_VALUE ? '' : value;
         setLiveScoreData(prev => ({
           ...prev,
-          matchType: actualValue as LiveMatchScoreData['matchType'], // Cast the value
+          matchType: actualValue as LiveMatchScoreData['matchType'],
         }));
     };
 
@@ -95,7 +107,7 @@ export default function AdminPage() {
          toast({ title: "Error", description: "Team 1 and Team 2 cannot be the same.", variant: "destructive" });
          return;
      }
-    updateLiveScore(liveScoreData as LiveMatchScoreData); // Assume complete data
+    updateLiveScore(liveScoreData as LiveMatchScoreData);
     toast({ title: "Success", description: "Live score updated." });
   };
 
@@ -104,10 +116,10 @@ export default function AdminPage() {
        team1: '', team1SetScore: 0, team1CurrentPoints: 0,
        team2: '', team2SetScore: 0, team2CurrentPoints: 0,
        status: '',
-       matchType: '', // Clear matchType as well
+       matchType: '',
      };
      setLiveScoreData(clearedScore);
-     updateLiveScore(null); // Clear in context
+     updateLiveScore(null);
      toast({ title: "Success", description: "Live score cleared." });
    };
 
@@ -115,9 +127,8 @@ export default function AdminPage() {
   const handleStandingChange = (group: 'groupA' | 'groupB', teamIndex: number, field: keyof TeamStanding, value: string | number) => {
     setEditingStandings(prev => {
       if (!prev) return null;
-      const updatedStandings = JSON.parse(JSON.stringify(prev)); // Deep copy
+      const updatedStandings = JSON.parse(JSON.stringify(prev));
       const numericValue = typeof value === 'string' ? parseInt(value, 10) || 0 : value;
-      // Ensure the field exists before trying to assign
       if (updatedStandings[group][teamIndex] && field in updatedStandings[group][teamIndex]) {
           (updatedStandings[group][teamIndex] as any)[field] = numericValue;
       } else {
@@ -131,9 +142,8 @@ export default function AdminPage() {
     if (!editingStandings) return;
 
     try {
-        // Iterate and update each team individually using the context function
         editingStandings.groupA.forEach((team, index) => {
-            const originalIndex = standings?.groupA.findIndex(t => t.name === team.name); // Find original index if order changed
+            const originalIndex = standings?.groupA.findIndex(t => t.name === team.name);
             if (originalIndex !== undefined && originalIndex !== -1) {
                 updateTeamStanding('groupA', originalIndex, team);
             } else {
@@ -154,16 +164,59 @@ export default function AdminPage() {
     }
   };
 
-
-  // Combine all teams for selection dropdowns
   const allTeams = [...teams.groupA, ...teams.groupB];
 
+  // Authentication Modal
+  if (!isAuthenticated) {
+    return (
+        <Dialog open={true} onOpenChange={() => { /* Prevent closing by clicking outside */ }}>
+            <DialogContent className="sm:max-w-[425px]">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <ShieldCheck className="text-primary" /> Admin Access Required
+                    </DialogTitle>
+                    <DialogDescription>
+                        Please enter the authentication code to access the admin panel.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <div className="grid grid-cols-4 items-center gap-4">
+                        <Label htmlFor="authCode" className="text-right col-span-1">
+                            Code
+                        </Label>
+                        <Input
+                            id="authCode"
+                            type="password" // Hide the code input
+                            value={authCodeInput}
+                            onChange={handleAuthCodeChange}
+                            className="col-span-3"
+                            onKeyDown={(e) => e.key === 'Enter' && handleAuthenticate()} // Allow Enter key submission
+                        />
+                    </div>
+                    {authError && (
+                        <p className="text-sm text-destructive text-center">{authError}</p>
+                    )}
+                </div>
+                <DialogFooter className="flex flex-col sm:flex-row justify-between gap-2">
+                    {/* Home Button */}
+                    <Link href="/">
+                        <Button variant="outline">
+                             <Home className="mr-2 h-4 w-4" /> Go to Home
+                        </Button>
+                    </Link>
+                    {/* Authenticate Button */}
+                    <Button onClick={handleAuthenticate}>Authenticate</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
+  }
 
+
+  // Render Admin Content if authenticated
   return (
     <div className="container mx-auto p-4 md:p-8">
       <h1 className="text-3xl font-bold text-primary mb-6">Admin Panel</h1>
-
-       {/* Removed Add/Manage Teams Card */}
 
       {/* Update Live Score */}
       <Card className="mb-6">
@@ -229,7 +282,6 @@ export default function AdminPage() {
                  </div>
                  <div>
                      <Label htmlFor="matchTypeSelect">Match Type</Label>
-                     {/* Map empty string state to the special value for the Select's value prop */}
                      <Select
                         name="matchType"
                         value={liveScoreData.matchType === '' ? NONE_MATCH_TYPE_VALUE : liveScoreData.matchType || NONE_MATCH_TYPE_VALUE}
@@ -239,11 +291,9 @@ export default function AdminPage() {
                             <SelectValue placeholder="Select Match Type" />
                         </SelectTrigger>
                         <SelectContent>
-                            {/* Add the "None" option explicitly with the special value */}
                             <SelectItem key={NONE_MATCH_TYPE_VALUE} value={NONE_MATCH_TYPE_VALUE}>
                                 None
                             </SelectItem>
-                            {/* Map the other types */}
                             {matchTypes.map(type => (
                                 <SelectItem key={type} value={type}>
                                     {type}
@@ -273,11 +323,11 @@ export default function AdminPage() {
            <CardDescription>Manually edit the standings for each team. Remember to save changes.</CardDescription>
         </CardHeader>
         <CardContent>
-          {isLoading && !editingStandings ? ( // Show loading only if editingStandings isn't populated yet
+          {isLoading && !editingStandings ? (
             <p>Loading standings...</p>
           ) : editingStandings ? (
             <>
-              {(['groupA', 'groupB'] as Array<keyof GroupStandings>).map((groupKey) => ( // Type assertion for map
+              {(['groupA', 'groupB'] as Array<keyof GroupStandings>).map((groupKey) => (
                 <div key={groupKey} className="mb-6">
                   <h3 className="text-xl font-semibold mb-3">{groupKey === 'groupA' ? 'Group A' : 'Group B'}</h3>
                   <Table>
@@ -288,7 +338,6 @@ export default function AdminPage() {
                         <TableHead className="text-center">W</TableHead>
                         <TableHead className="text-center">L</TableHead>
                         <TableHead className="text-center">Pts</TableHead>
-                        {/* Make BP accept positive/negative numbers */}
                         <TableHead className="text-center">BP</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -300,7 +349,6 @@ export default function AdminPage() {
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.wins} onChange={(e) => handleStandingChange(groupKey, index, 'wins', e.target.value)} /></TableCell>
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" min="0" value={team.losses} onChange={(e) => handleStandingChange(groupKey, index, 'losses', e.target.value)} /></TableCell>
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.points} onChange={(e) => handleStandingChange(groupKey, index, 'points', e.target.value)} /></TableCell>
-                           {/* Ensure BP input is flexible */}
                           <TableCell><Input className="w-16 mx-auto text-center" type="number" value={team.breakPoints} onChange={(e) => handleStandingChange(groupKey, index, 'breakPoints', e.target.value)} /></TableCell>
                         </TableRow>
                       ))}
