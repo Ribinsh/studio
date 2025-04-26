@@ -1,3 +1,4 @@
+
 /**
  * Represents the standings of a single team.
  */
@@ -27,3 +28,42 @@ export interface TeamsConfig {
    groupA: string[];
    groupB: string[];
  }
+
+/**
+ * Represents the data structure for the *live* match score,
+ * managed via the admin page or potentially fetched later.
+ */
+export interface LiveMatchScoreData {
+  /**
+   * The match number (optional).
+   */
+  matchNo?: number;
+  /**
+   * The name of the first team.
+   */
+  team1: string;
+  /**
+   * The current set score of the first team.
+   */
+  team1SetScore: number;
+  /**
+   * The current points of the first team in the active set.
+   */
+  team1CurrentPoints: number;
+  /**
+   * The name of the second team.
+   */
+  team2: string;
+  /**
+   * The current set score of the second team.
+   */
+  team2SetScore: number;
+  /**
+   * The current points of the second team in the active set.
+   */
+  team2CurrentPoints: number;
+  /**
+   * Optional status like "Live", "Timeout", "Finished Set", etc.
+   */
+  status?: string;
+}
