@@ -45,7 +45,7 @@ export default function Home() {
    } else if (liveMatch && liveMatch.team1 && liveMatch.team2) { // Check if teams are present
         const statusLower = liveMatch.status?.toLowerCase() || 'live';
         if (statusLower === 'live' || statusLower === '') {
-             liveBadgeText = `LIVE MATCH: ${liveMatch.team1} vs ${liveMatch.team2}`;
+             liveBadgeText = `LIVE MATCH:\n ${liveMatch.team1} vs ${liveMatch.team2}`;
              badgeVariant = "destructive"; // Use destructive (red) for live
         } else {
              liveBadgeText = `MATCH STATUS: ${liveMatch.status}`;
@@ -68,7 +68,7 @@ export default function Home() {
            </div>
            {/* Display Badge only if there's a status or live match */}
            {(liveMatch || isLoading) && (
-               <Badge variant={badgeVariant} className={`${badgeVariant === 'destructive' ? 'animate-pulse' : ''} text-lg px-4 py-1 mt-2`}>
+               <Badge variant={badgeVariant} className={`${badgeVariant === 'destructive' ? 'animate-pulse whitespace-pre-wrap' : 'whitespace-pre-wrap'} text-lg px-4 py-1 mt-2`}>
                     {liveBadgeText}
                </Badge>
            )}
