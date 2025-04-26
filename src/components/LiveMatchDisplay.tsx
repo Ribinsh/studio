@@ -1,17 +1,55 @@
 
-
 import type React from 'react';
+import { useState, useEffect, useRef } from 'react'; // Import useState, useEffect, useRef
 import type { LiveMatchScoreData } from '@/lib/types'; // Use type from lib
 import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { TvIcon, HourglassIcon } from 'lucide-react'; // Using TvIcon or HourglassIcon
 import { Badge } from "@/components/ui/badge"; // Import Badge
+import { cn } from '@/lib/utils'; // Import cn for conditional classes
 
 interface LiveMatchDisplayProps {
   liveMatch: LiveMatchScoreData | null | undefined;
 }
 
+// Helper hook to track previous value
+function usePrevious<T>(value: T): T | undefined {
+    const ref = useRef<T>();
+    useEffect(() => {
+        ref.current = value;
+    });
+    return ref.current;
+}
+
+
 const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
+  const [animateScore1, setAnimateScore1] = useState(false);
+  const [animateScore2, setAnimateScore2] = useState(false);
+
+  const team1CurrentPoints = liveMatch?.team1CurrentPoints ?? 0;
+  const team2CurrentPoints = liveMatch?.team2CurrentPoints ?? 0;
+
+  const prevTeam1Points = usePrevious(team1CurrentPoints);
+  const prevTeam2Points = usePrevious(team2CurrentPoints);
+
+  // Trigger animation when current points change
+  useEffect(() => {
+    if (prevTeam1Points !== undefined && team1CurrentPoints !== prevTeam1Points) {
+      setAnimateScore1(true);
+      const timer = setTimeout(() => setAnimateScore1(false), 500); // Duration of animation
+      return () => clearTimeout(timer);
+    }
+  }, [team1CurrentPoints, prevTeam1Points]);
+
+  useEffect(() => {
+    if (prevTeam2Points !== undefined && team2CurrentPoints !== prevTeam2Points) {
+      setAnimateScore2(true);
+      const timer = setTimeout(() => setAnimateScore2(false), 500); // Duration of animation
+      return () => clearTimeout(timer);
+    }
+  }, [team2CurrentPoints, prevTeam2Points]);
+
+
   if (!liveMatch || !liveMatch.team1 || !liveMatch.team2) { // Check if teams are set
     return (
       <div className="flex flex-col items-center justify-center h-60 text-center text-muted-foreground">
@@ -27,8 +65,8 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
     team2,
     team1SetScore = 0,
     team2SetScore = 0,
-    team1CurrentPoints = 0,
-    team2CurrentPoints = 0,
+    // team1CurrentPoints = 0, // Use state variable instead
+    // team2CurrentPoints = 0, // Use state variable instead
     status,
     matchType, // Destructure matchType
   } = liveMatch;
@@ -67,10 +105,18 @@ const LiveMatchDisplay: React.FC<LiveMatchDisplayProps> = ({ liveMatch }) => {
       {/* Current Set Points - NOW MORE PROMINENT */}
       <div className="text-lg text-muted-foreground mb-2">Current Points</div>
       <div className="grid grid-cols-2 gap-4 w-full mb-6">
-         <div className={`text-6xl md:text-8xl font-bold ${team1LeadsPoints ? 'text-primary' : 'text-foreground/80'}`}>
+         <div className={cn(
+                `text-6xl md:text-8xl font-bold transition-transform duration-300 ease-out`,
+                team1LeadsPoints ? 'text-primary' : 'text-foreground/80',
+                animateScore1 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class
+              )}>
           {team1CurrentPoints}
         </div>
-         <div className={`text-6xl md:text-8xl font-bold ${team2LeadsPoints ? 'text-primary' : 'text-foreground/80'}`}>
+         <div className={cn(
+               `text-6xl md:text-8xl font-bold transition-transform duration-300 ease-out`,
+                team2LeadsPoints ? 'text-primary' : 'text-foreground/80',
+                animateScore2 ? 'scale-125 text-accent' : 'scale-100' // Apply animation class
+              )}>
           {team2CurrentPoints}
         </div>
       </div>

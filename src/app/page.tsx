@@ -5,33 +5,35 @@ import type { LiveMatchScoreData } from '@/lib/types'; // Use type from lib
 import React, { useState, useCallback, useContext, useEffect } from 'react'; // Added useEffect and useCallback
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, AlertCircleIcon, Wrench } from 'lucide-react';
-import TimeoutModal from '@/components/TimeoutModal';
+import { LoaderIcon, UsersIcon, BarChartIcon, AlertCircleIcon } from 'lucide-react'; // Removed TimerIcon
 import StandingsModal from '@/components/StandingsModal';
 import LiveMatchDisplay from '@/components/LiveMatchDisplay';
 import type { GroupStandings } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { AppContext } from '@/context/AppContext'; // Import AppContext
-// Removed Link import as admin redirect is removed
-// import Link from 'next/link';
+// Removed TimeoutModal import
+// import TimeoutModal from '@/components/TimeoutModal';
 
 export default function Home() {
   const { liveMatch, standings, isLoading } = useContext(AppContext); // Get state from context
 
-  const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false);
+  // Removed Timeout Modal State
+  // const [isTimeoutModalOpen, setIsTimeoutModalOpen] = useState(false);
   const [isStandingsModalOpen, setIsStandingsModalOpen] = useState(false);
 
-  const handleTimeoutClick = () => {
-     setIsTimeoutModalOpen(true);
-  };
+  // Removed Timeout Click Handler
+  // const handleTimeoutClick = () => {
+  //    setIsTimeoutModalOpen(true);
+  // };
 
   const handleShowStandingsClick = () => {
     setIsStandingsModalOpen(true);
   };
 
-  const handleTimeoutClose = useCallback(() => {
-    setIsTimeoutModalOpen(false);
-  }, []);
+  // Removed Timeout Close Handler
+  // const handleTimeoutClose = useCallback(() => {
+  //   setIsTimeoutModalOpen(false);
+  // }, []);
 
    // Determine badge text and variant based on loading, error, or live match data from context
    let liveBadgeText = 'Checking Live Status...';
@@ -71,19 +73,10 @@ export default function Home() {
                </Badge>
            )}
          </div>
-          {/* Admin Link - Removed */}
-          {/*
-          <Link href="/admin-special-access">
-            <Button variant="outline" size="icon" className="ml-auto">
-              <Wrench className="h-5 w-5" />
-              <span className="sr-only">Admin Panel</span>
-            </Button>
-          </Link>
-          */}
        </header>
 
       <main className="flex-grow flex flex-col items-center justify-center">
-        <Card className="w-full max-w-4xl shadow-lg mb-6">
+        <Card className="w-full max-w-4xl shadow-lg mb-6 overflow-hidden"> {/* Added overflow-hidden */}
           <CardContent className="p-6 md:p-10">
             {isLoading ? ( // Check context loading state
               <div className="flex justify-center items-center h-60">
@@ -97,7 +90,7 @@ export default function Home() {
           </CardContent>
         </Card>
 
-        {/* Buttons Section */}
+        {/* Buttons Section - Removed Timeout Button */}
         <div className="flex flex-col sm:flex-row gap-4 mt-4">
           <Button
             onClick={handleShowStandingsClick}
@@ -108,24 +101,11 @@ export default function Home() {
             <BarChartIcon className="mr-2 h-5 w-5" />
             Show Group Standings
           </Button>
-
-          <Button
-            onClick={handleTimeoutClick}
-            variant="destructive"
-            className="bg-accent text-accent-foreground hover:bg-accent/90 shadow-md transition-transform transform hover:scale-105"
-          >
-            <TimerIcon className="mr-2 h-5 w-5" />
-            Trigger Team Timeout (30s)
-          </Button>
         </div>
 
       </main>
 
-      {/* Modals */}
-      <TimeoutModal
-        isOpen={isTimeoutModalOpen}
-        onClose={handleTimeoutClose}
-      />
+      {/* Modals - Removed Timeout Modal */}
       <StandingsModal
         isOpen={isStandingsModalOpen}
         onClose={() => setIsStandingsModalOpen(false)}
@@ -140,3 +120,4 @@ export default function Home() {
     </div>
   );
 }
+
