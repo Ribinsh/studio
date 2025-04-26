@@ -6,20 +6,12 @@ import { getLiveScoreDataFromSheets, getStandingsDataFromSheets, getMockLiveScor
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, TvIcon, AlertCircleIcon } from 'lucide-react';
+import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, AlertCircleIcon } from 'lucide-react'; // Removed TvIcon as it's not used
 import TimeoutModal from '@/components/TimeoutModal';
 import StandingsModal from '@/components/StandingsModal';
 import LiveMatchDisplay from '@/components/LiveMatchDisplay';
 import type { GroupStandings } from '@/lib/types';
-// calculateStandings is no longer needed as standings are fetched directly
-// import { calculateStandings } from '@/lib/standings';
 import { Badge } from '@/components/ui/badge';
-
-// Define teams and groups (still needed for context, maybe less critical if standings are pre-calculated)
-// const TEAMS = {
-//   groupA: ['Kanthapuram', 'Marakkara', 'Vaalal', 'Puthankunnu'],
-//   groupB: ['Kizhisseri', 'Kizhakkoth', 'Kakkancheri'],
-// };
 
 export default function Home() {
   const [liveMatch, setLiveMatch] = useState<LiveMatchScoreData | null>(null);
@@ -42,16 +34,26 @@ export default function Home() {
       setErrorStandings(null);
     }
 
-
     // Fetch Live Score
     try {
-      const liveScoreUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_URL || 'YOUR_LIVE_SCORE_SHEETS_URL_HERE';
-      const liveData = await getLiveScoreDataFromSheets(liveScoreUrl);
-      setLiveMatch(liveData);
-    } catch (err) {
-      setErrorLive('Failed to fetch live score data.');
+      // Use environment variable or the provided URL. Assuming gid=0 for the live score sheet.
+      const liveScoreSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0';
+      const liveScoreBaseUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID
+        ? `https://docs.google.com/spreadsheets/d/${process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID}/export?format=csv&gid=${liveScoreSheetId}`
+        : `https://docs.google.com/spreadsheets/d/13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU/export?format=csv&gid=${liveScoreSheetId}`; // Use provided URL as fallback
+
+      console.log("Fetching live score from:", liveScoreBaseUrl); // Log the URL being fetched
+      const liveData = await getLiveScoreDataFromSheets(liveScoreBaseUrl);
+      setLiveMatch(liveData); // liveData can be null if fetch fails or no live match
+       if (!liveData) {
+           // Optionally set an error or keep it null to show "No match live"
+           // setErrorLive("Could not retrieve live match data.");
+           console.log("No live match data returned from fetch.");
+       }
+    } catch (err: any) {
+      setErrorLive(`Failed to fetch live score: ${err.message || 'Unknown error'}`);
       console.error("Live Score Fetch Error:", err);
-      setLiveMatch(getMockLiveScoreData()); // Use mock data on error
+      setLiveMatch(null); // Set to null on error
     } finally {
        setIsLoadingLive(false);
     }
@@ -61,13 +63,29 @@ export default function Home() {
     // Fetching standings here to have them ready
     if (!isStandingsModalOpen) { // Avoid refetching if modal is already open and potentially showing data
         try {
-            const standingsUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_STANDINGS_URL || 'YOUR_STANDINGS_SHEETS_URL_HERE';
-            const standingsData = await getStandingsDataFromSheets(standingsUrl);
-            setStandings(standingsData);
-        } catch (err) {
-            setErrorStandings('Failed to fetch standings data.');
+            // Use environment variable or a placeholder STANDINGS URL. Ensure this is configured.
+            const standingsSheetId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_STANDINGS_GID || 'YOUR_STANDINGS_GID_HERE'; // Need GID for standings sheet
+            const standingsDocId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_STANDINGS_DOC_ID || 'YOUR_STANDINGS_DOC_ID_HERE'; // Need Doc ID for standings
+            const standingsUrl = standingsDocId !== 'YOUR_STANDINGS_DOC_ID_HERE'
+              ? `https://docs.google.com/spreadsheets/d/${standingsDocId}/export?format=csv&gid=${standingsSheetId}`
+              : 'YOUR_STANDINGS_SHEETS_URL_HERE'; // Placeholder if env vars not set
+
+
+            // console.log("Fetching standings from:", standingsUrl); // Log the URL being fetched
+            const standingsData = await getStandingsDataFromSheets(standingsUrl); // This will use mock data if URL is placeholder
+            setStandings(standingsData); // standingsData can be null
+             if (!standingsData && standingsUrl !== 'YOUR_STANDINGS_SHEETS_URL_HERE') {
+                 setErrorStandings("Could not retrieve standings data.");
+                 console.log("No standings data returned from fetch.");
+             } else if (!standingsData) {
+                 console.log("Using mock standings data as URL is not configured.");
+                 // Set mock data explicitly if needed, although getStandingsDataFromSheets might already do it
+                 setStandings(getMockStandingsData());
+             }
+        } catch (err: any) {
+            setErrorStandings(`Failed to fetch standings: ${err.message || 'Unknown error'}`);
             console.error("Standings Fetch Error:", err);
-             setStandings(getMockStandingsData()); // Use mock data on error
+            setStandings(getMockStandingsData()); // Fallback to mock data on error
         } finally {
             setIsLoadingStandings(false);
         }
@@ -81,34 +99,37 @@ export default function Home() {
 
   useEffect(() => {
     fetchData(); // Initial fetch
-    const intervalId = setInterval(fetchData, 10000); // Refresh every 10 seconds for live updates
+    const intervalId = setInterval(fetchData, 15000); // Refresh every 15 seconds for live updates
     return () => clearInterval(intervalId); // Cleanup interval on unmount
   }, [fetchData]); // Rerun effect if fetchData function reference changes
 
   const handleTimeoutClick = () => {
-    setIsTimeoutModalOpen(true);
+     setIsTimeoutModalOpen(true);
   };
 
   const handleShowStandingsClick = () => {
     setIsStandingsModalOpen(true);
     // Optionally trigger a standings fetch here if not done periodically
-    // if (!standings && !isLoadingStandings) {
-    //   fetchStandingsData(); // You'd need to split fetchData logic
+    // if (!standings && !isLoadingStandings && !errorStandings) {
+    //   fetchData(); // Refetch all data, or create a separate fetchStandings function
     // }
   };
 
-   const liveBadgeText = liveMatch?.status?.toLowerCase() === 'live' ? `LIVE MATCH: ${liveMatch.team1} vs ${liveMatch.team2}` : (liveMatch ? `MATCH STATUS: ${liveMatch.status || 'Info'}` : null);
+  const handleTimeoutClose = useCallback(() => {
+    setIsTimeoutModalOpen(false);
+  }, []);
+
+   const liveBadgeText = liveMatch?.status?.toLowerCase() === 'live' ? `LIVE MATCH: ${liveMatch.team1} vs ${liveMatch.team2}` : (liveMatch ? `MATCH STATUS: ${liveMatch.status || 'Info'}` : 'No Live Match Data');
 
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 flex flex-col">
       <header className="mb-6 text-center">
         <h1 className="text-4xl font-bold text-primary mb-2">CourtSide Chronicle</h1>
-         {liveBadgeText && (
-              <Badge variant={liveMatch?.status?.toLowerCase() === 'live' ? "destructive" : "secondary"} className={`${liveMatch?.status?.toLowerCase() === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-blue-500 text-white'} text-lg px-4 py-1`}>
-                {liveBadgeText}
-              </Badge>
-         )}
+         {/* Adjust badge display based on liveMatch presence */}
+         <Badge variant={liveMatch?.status?.toLowerCase() === 'live' ? "destructive" : "secondary"} className={`${liveMatch?.status?.toLowerCase() === 'live' ? 'bg-red-500 text-white animate-pulse' : 'bg-blue-500 text-white'} text-lg px-4 py-1`}>
+             {liveBadgeText}
+         </Badge>
       </header>
 
       <main className="flex-grow flex flex-col items-center justify-center">
@@ -120,15 +141,16 @@ export default function Home() {
                 <p className="ml-4 text-xl text-muted-foreground">Loading Live Score...</p>
               </div>
             ) : errorLive ? (
+                // Display error message, but still try to render LiveMatchDisplay which handles null
                 <div className="flex flex-col items-center justify-center h-60 text-center text-destructive p-4 border border-destructive rounded-md">
                     <AlertCircleIcon className="h-12 w-12 mb-4" />
                     <p className="text-lg font-semibold">{errorLive}</p>
-                    <p className="text-sm mt-2">Displaying last known or mock data.</p>
-                    {/* Render display with potentially stale/mock data */}
-                    <LiveMatchDisplay liveMatch={liveMatch} />
+                     {/* Render display with null data, it will show "No match live" */}
+                    <LiveMatchDisplay liveMatch={null} />
                 </div>
             ) : (
-              <LiveMatchDisplay liveMatch={liveMatch} /> // Pass the fetched or null live match data
+               // Render LiveMatchDisplay, it handles the case where liveMatch is null internally
+              <LiveMatchDisplay liveMatch={liveMatch} />
             )}
           </CardContent>
         </Card>
@@ -139,8 +161,9 @@ export default function Home() {
             onClick={handleShowStandingsClick}
             variant="secondary"
             className="shadow-md transition-transform transform hover:scale-105"
-            disabled={isLoadingStandings && !standings} // Disable if loading initially
+            disabled={isLoadingStandings && !standings} // Disable if loading initially and no data yet
           >
+            {/* Show loader only if loading AND standings are null */}
             {isLoadingStandings && !standings ? <LoaderIcon className="mr-2 h-5 w-5 animate-spin" /> : <BarChartIcon className="mr-2 h-5 w-5" />}
             Show Group Standings
           </Button>
@@ -155,9 +178,9 @@ export default function Home() {
           </Button>
         </div>
 
-         {/* Display Standings Error if applicable */}
+         {/* Display Standings Error if applicable and modal is closed */}
          {errorStandings && !isStandingsModalOpen && (
-             <p className="text-xs text-destructive mt-2 text-center">Error loading standings. Please try opening the standings table.</p>
+             <p className="text-xs text-destructive mt-2 text-center">{errorStandings}. Showing mock data.</p>
          )}
 
       </main>
@@ -165,7 +188,7 @@ export default function Home() {
       {/* Modals */}
       <TimeoutModal
         isOpen={isTimeoutModalOpen}
-        onClose={() => setIsTimeoutModalOpen(false)}
+        onClose={handleTimeoutClose} // Use the memoized close handler
       />
       {/* Pass standings data and loading/error state to the modal */}
       <StandingsModal
