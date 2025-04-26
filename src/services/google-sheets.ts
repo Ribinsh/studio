@@ -1,7 +1,7 @@
 
 
 import type { GroupStandings, TeamStanding } from '@/lib/types'; // Import necessary types
-import Papa from 'papaparse'; // Import papaparse
+// Removed papaparse import
 
 /**
  * Represents the data structure for the *live* match score,
@@ -45,16 +45,15 @@ export interface LiveMatchScoreData {
 
 /**
  * Asynchronously retrieves *live* match score data from a specific Google Sheets URL.
- * Fetches the sheet as CSV and parses it using papaparse.
+ * Fetches the sheet as CSV and parses it manually using string splitting.
  *
- * @param googleSheetsLiveScoreUrl The direct CSV export URL of the Google Sheets document/tab for the live score.
+ * @param googleSheetsLiveScoreUrl The direct CSV export URL of the Google Sheets document/tab for the live score. Defaults to the environment variable or a hardcoded URL.
  * @returns A promise that resolves to a LiveMatchScoreData object or null if no match is live/data unavailable.
  */
 export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: string): Promise<LiveMatchScoreData | null> {
 
    // --- Use the new direct CSV link as the primary fallback ---
-   // Updated URL from the user
-   const defaultLiveScoreUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQuYS75C9qL3p-q4L-PQCEA7kVHzaStGnVUvS0i9Lk4Hs7gtCD5k1SJRbW5xjyVytZN8IWPtk0GOimS/pub?gid=0&single=true&output=csv';
+   const defaultLiveScoreUrl = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_CSV_URL || 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQuYS75C9qL3p-q4L-PQCEA7kVHzaStGnVUvS0i9Lk4Hs7gtCD5k1SJRbW5xjyVytZN8IWPtk0GOimS/pub?gid=0&single=true&output=csv';
 
    // --- Check for Environment Variables (Optional Override) ---
    const liveScoreDocIdFromEnv = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
@@ -104,70 +103,78 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
            return null;
        }
 
-      // Parse CSV using papaparse
-      const parsed = Papa.parse(csvText.trim(), {
-          header: true,
-          skipEmptyLines: true
-      });
+      // --- Manual CSV Parsing using split() ---
+      const lines = csvText.trim().split("\n").map(row => row.trim()).filter(row => row.length > 0); // Split by newline, trim each row, filter empty lines
 
-      if (parsed.errors.length > 0) {
-          console.error("Error parsing live score CSV with papaparse:", parsed.errors);
-          console.log("Problematic CSV Text:\n", csvText.trim());
+      if (lines.length < 3) { // Need at least header + 2 team rows
+          console.error(`Live score CSV has only ${lines.length} non-empty lines. Expected at least 3 (Header + 2 Teams).`);
+          console.log("Raw CSV Text:\n", csvText);
           return null;
       }
 
-      const rows = parsed.data as any[];
+      // Split headers and rows into cells
+      const headers = lines[0].split(",").map(h => h.trim());
+      const team1Cells = lines[1].split(",").map(cell => cell.trim());
+      const team2Cells = lines[2].split(",").map(cell => cell.trim());
 
-      if (rows.length < 2) {
-           console.warn(`Parsed data has only ${rows.length} rows. Expected at least 2 for the teams.`);
-           console.log("Parsed Rows:", rows);
-           return null;
+      // Find column indices based on expected headers (case-insensitive for robustness)
+      const teamIndex = headers.findIndex(h => h.toLowerCase() === 'team');
+      const setScoreIndex = headers.findIndex(h => h.toLowerCase() === 'setscore'); // Corrected to match sheet header
+      const currentPointsIndex = headers.findIndex(h => h.toLowerCase() === 'currentpoints'); // Corrected to match sheet header
+      const statusIndex = headers.findIndex(h => h.toLowerCase() === 'status');
+
+      // Validate required column indices
+      if (teamIndex === -1 || setScoreIndex === -1 || currentPointsIndex === -1) {
+          console.error("Could not find required headers (Team, SetScore, CurrentPoints) in CSV.");
+          console.log("Found headers:", headers);
+          return null;
       }
 
-      const team1Data = rows[0];
-      const team2Data = rows[1];
+      // Extract data using indices
+      const team1 = team1Cells[teamIndex];
+      const team2 = team2Cells[teamIndex];
+      const team1SetScore = parseInt(team1Cells[setScoreIndex] || '0', 10);
+      const team2SetScore = parseInt(team2Cells[setScoreIndex] || '0', 10);
+      const team1CurrentPoints = parseInt(team1Cells[currentPointsIndex] || '0', 10);
+      const team2CurrentPoints = parseInt(team2Cells[currentPointsIndex] || '0', 10);
 
-      // Validate required fields exist and parse them using the correct headers
-      const team1 = team1Data['Team']?.trim();
-      const team2 = team2Data['Team']?.trim();
-      const team1SetScore = parseInt(team1Data['SetScore'] || '0', 10);
-      const team2SetScore = parseInt(team2Data['SetScore'] || '0', 10);
-      const team1CurrentPoints = parseInt(team1Data['CurrentPoints'] || '0', 10);
-      const team2CurrentPoints = parseInt(team2Data['CurrentPoints'] || '0', 10);
+      // Extract status (optional)
+      let status = 'Live'; // Default status
+      if (statusIndex !== -1 && team1Cells[statusIndex] && team1Cells[statusIndex].trim() !== '') {
+          status = team1Cells[statusIndex].trim();
+      }
 
+      // Validate extracted data
       if (!team1 || !team2) {
           console.error("Missing team names in parsed live score data.");
-          console.log("Team1 Data:", team1Data);
-          console.log("Team2 Data:", team2Data);
+          console.log("Team1 Cells:", team1Cells, "Index:", teamIndex);
+          console.log("Team2 Cells:", team2Cells, "Index:", teamIndex);
           return null;
       }
       if (isNaN(team1SetScore) || isNaN(team2SetScore) || isNaN(team1CurrentPoints) || isNaN(team2CurrentPoints)) {
           console.error("Non-numeric score/points found in parsed live score data.");
-          console.log("Team1 Data:", team1Data);
-          console.log("Team2 Data:", team2Data);
+          console.log("Team1 Set Score:", team1Cells[setScoreIndex], "Index:", setScoreIndex);
+          console.log("Team2 Set Score:", team2Cells[setScoreIndex], "Index:", setScoreIndex);
+          console.log("Team1 Current Points:", team1Cells[currentPointsIndex], "Index:", currentPointsIndex);
+          console.log("Team2 Current Points:", team2Cells[currentPointsIndex], "Index:", currentPointsIndex);
           return null;
       }
 
-      let status = 'Live'; // Default status
-      if (parsed.meta.fields?.includes('Status') && team1Data['Status'] && team1Data['Status'].trim() !== '') {
-          status = team1Data['Status'].trim();
-      }
+      const liveMatchData: LiveMatchScoreData = {
+          team1,
+          team1SetScore,
+          team1CurrentPoints,
+          team2,
+          team2SetScore,
+          team2CurrentPoints,
+          status,
+      };
 
-       const liveMatchData: LiveMatchScoreData = {
-           team1,
-           team1SetScore,
-           team1CurrentPoints,
-           team2,
-           team2SetScore,
-           team2CurrentPoints,
-           status,
-       };
-
-       console.log("Successfully parsed live score using papaparse:", liveMatchData);
-       return liveMatchData;
+      console.log("Successfully parsed live score using manual split:", liveMatchData);
+      return liveMatchData;
 
   } catch (error: any) {
-      console.error("Error in getLiveScoreDataFromSheets (papaparse fetch/parse):", error.message || error);
+      console.error("Error in getLiveScoreDataFromSheets (manual fetch/parse):", error.message || error);
       return null;
   }
 }
@@ -181,7 +188,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
  * @returns A promise that resolves to a GroupStandings object or null if data unavailable.
  */
 export async function getStandingsDataFromSheets(googleSheetsStandingsUrl: string): Promise<GroupStandings | null> {
-    // TODO: Implement actual fetching and parsing for standings CSV/API using papaparse
+    // TODO: Implement actual fetching and parsing for standings CSV/API using papaparse or manual split
     // Fetch data from the specified URL (standings table).
     // Parse the rows for each group (Group A, Group B).
     // Map the data to TeamStanding objects and structure it as GroupStandings.
@@ -284,3 +291,4 @@ function sortStandingsLogic(a: TeamStanding, b: TeamStanding): number {
     // 4. Sort by Name (ascending) as the final tie-breaker
     return a.name.localeCompare(b.name);
 }
+
