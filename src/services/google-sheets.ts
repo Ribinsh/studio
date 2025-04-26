@@ -46,40 +46,38 @@ export interface LiveMatchScoreData {
  * Asynchronously retrieves *live* match score data from a specific Google Sheets URL.
  * Fetches the sheet as CSV and parses it using papaparse.
  *
- * @param googleSheetsLiveScoreUrl The CSV export URL of the Google Sheets document/tab for the live score.
+ * @param googleSheetsLiveScoreUrl The direct CSV export URL of the Google Sheets document/tab for the live score.
  * @returns A promise that resolves to a LiveMatchScoreData object or null if no match is live/data unavailable.
  */
-export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: string): Promise<LiveMatchScoreData | null> {
+export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: string): Promise<LiveMatchScoreData | null> {
 
-  // Define the specific valid URL identifier expected
-   const validDocId = '13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU'; // User provided ID
-   const liveScoreSheetGid = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0'; // Default to GID 0 if not set
+   // --- Use the new direct CSV link as the primary fallback ---
+   const defaultLiveScoreUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQuYS75C9qL3p-q4L-PQCEA7kVHzaStGnVUvS0i9Lk4Hs7gtCD5k1SJRbW5xjyVytZN8IWPtk0GOimS/pub?gid=0&single=true&output=csv';
+
+   // --- Check for Environment Variables (Optional Override) ---
+   // This part is kept for potential future configuration, but the default is now the direct link.
    const liveScoreDocIdFromEnv = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
+   const liveScoreSheetGid = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0'; // Default GID if only DOC ID is set
 
    let effectiveUrl: string;
 
    if (liveScoreDocIdFromEnv && liveScoreDocIdFromEnv !== 'YOUR_DOC_ID_HERE') {
-       // Use environment variable if set and valid
+       // Construct URL from environment variables if they are set and valid
        effectiveUrl = `https://docs.google.com/spreadsheets/d/${liveScoreDocIdFromEnv}/export?format=csv&gid=${liveScoreSheetGid}`;
        console.log("Using Google Sheet URL from environment variables:", effectiveUrl);
-   } else if (googleSheetsLiveScoreUrl && googleSheetsLiveScoreUrl.includes(validDocId)) {
-        // Use the provided URL if it contains the expected document ID
-        // Extract GID if present, otherwise default
-        const urlParams = new URLSearchParams(googleSheetsLiveScoreUrl.split('?')[1]);
-        const gid = urlParams.get('gid') || liveScoreSheetGid;
-        effectiveUrl = `https://docs.google.com/spreadsheets/d/${validDocId}/export?format=csv&gid=${gid}`;
-        console.log("Using user-provided Google Sheet URL:", effectiveUrl);
-    } else {
-        // If neither env var nor valid provided URL is available
-        console.warn("Invalid or placeholder Google Sheets URL for live score. No valid Doc ID found in environment or provided URL:", googleSheetsLiveScoreUrl);
-        console.log("Will NOT attempt to fetch. Returning null.");
-        // Return null, don't attempt fetch or use mock data
-        return null;
-    }
+   } else if (googleSheetsLiveScoreUrl && googleSheetsLiveScoreUrl.startsWith('https')) {
+       // Use the URL passed as argument if provided and looks like a valid URL
+       effectiveUrl = googleSheetsLiveScoreUrl;
+       console.log("Using URL passed as argument:", effectiveUrl);
+   } else {
+       // Fallback to the default direct CSV link
+       effectiveUrl = defaultLiveScoreUrl;
+       console.log("Using default Google Sheet CSV URL:", effectiveUrl);
+   }
 
 
    // Add cache-busting query parameter
-   const urlWithCacheBuster = `${effectiveUrl}&_=${new Date().getTime()}`;
+   const urlWithCacheBuster = `${effectiveUrl}${effectiveUrl.includes('?') ? '&' : '?'}cacheBuster=${new Date().getTime()}`;
 
 
   try {
@@ -91,16 +89,13 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
               'Cache-Control': 'no-cache',
               'Pragma': 'no-cache'
           },
-          // Add timeout? Consider using AbortController if fetch takes too long
       });
 
       console.log(`Fetch response status: ${response.status}`); // Log status
 
       if (!response.ok) {
-          // Handle non-200 responses (e.g., 404 Not Found, 403 Forbidden if permissions changed)
            const errorText = await response.text(); // Try to get error text from response
            console.error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}. Response body: ${errorText}`);
-           // Do not fall back to mock data here, signal the error properly
            return null; // Indicate fetch failure
       }
 
@@ -119,51 +114,61 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
 
       if (parsed.errors.length > 0) {
           console.error("Error parsing live score CSV with papaparse:", parsed.errors);
+          // Try to log the raw CSV text that caused the error
+          // console.log("Problematic CSV Text:\n", csvText.trim());
           return null;
       }
 
       // Ensure headers are strings (papaparse might infer types)
       const headers = parsed.meta.fields as string[];
-      const requiredHeaders = ['Team', 'Set Score', 'Current Points'];
-      const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+      const requiredHeaders = ['Team', 'SetScore', 'CurrentPoints']; // Updated header names from the sheet
+      const missingHeaders = requiredHeaders.filter(h => !headers || !headers.includes(h)); // Added check for headers existence
 
       if (missingHeaders.length > 0) {
-          console.error(`Missing required headers in live score CSV: ${missingHeaders.join(', ')}. Found headers: ${headers.join(', ')}`);
+          console.error(`Missing required headers in live score CSV: ${missingHeaders.join(', ')}. Found headers: ${headers ? headers.join(', ') : 'None'}`);
+           console.log("Problematic CSV Text:\n", csvText.trim()); // Log CSV if headers missing
           return null;
       }
 
       // Papaparse returns data as an array of objects
       const rows = parsed.data as any[]; // Use 'any' for flexibility, validate below
 
+      // Expect exactly two rows for the two teams after the header
       if (rows.length < 2) {
           console.warn(`Live score CSV has only ${rows.length} data rows after header. Expected 2 rows for the two teams.`);
-          return null; // Need exactly two rows for the teams
+          console.log("Parsed Rows:", rows); // Log rows for debugging
+          return null;
       }
 
       const team1Data = rows[0];
       const team2Data = rows[1];
 
-      // Validate required fields exist and parse them
+      // Validate required fields exist and parse them using the correct headers
       const team1 = team1Data['Team']?.trim();
       const team2 = team2Data['Team']?.trim();
-      const team1SetScore = parseInt(team1Data['Set Score'] || '0', 10);
-      const team2SetScore = parseInt(team2Data['Set Score'] || '0', 10);
-      const team1CurrentPoints = parseInt(team1Data['Current Points'] || '0', 10);
-      const team2CurrentPoints = parseInt(team2Data['Current Points'] || '0', 10);
+      // Ensure fallback to '0' if values are null/undefined before parsing
+      const team1SetScore = parseInt(team1Data['SetScore'] || '0', 10);
+      const team2SetScore = parseInt(team2Data['SetScore'] || '0', 10);
+      const team1CurrentPoints = parseInt(team1Data['CurrentPoints'] || '0', 10);
+      const team2CurrentPoints = parseInt(team2Data['CurrentPoints'] || '0', 10);
 
       // Basic validation
       if (!team1 || !team2) {
           console.error("Missing team names in parsed live score data.");
+          console.log("Team1 Data:", team1Data);
+          console.log("Team2 Data:", team2Data);
           return null;
       }
       if (isNaN(team1SetScore) || isNaN(team2SetScore) || isNaN(team1CurrentPoints) || isNaN(team2CurrentPoints)) {
           console.error("Non-numeric score/points found in parsed live score data.");
+          console.log("Team1 Data:", team1Data);
+          console.log("Team2 Data:", team2Data);
           return null;
       }
 
       // Status is optional. Check if 'Status' header exists and use value from first row if present.
       let status = 'Live'; // Default status
-      if (headers.includes('Status') && team1Data['Status']) {
+      if (headers.includes('Status') && team1Data['Status'] && team1Data['Status'].trim() !== '') {
           status = team1Data['Status'].trim();
       }
 
@@ -182,8 +187,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl: strin
 
   } catch (error: any) {
       // Catch network errors or other exceptions during fetch/parsing
-      console.error("Error in getLiveScoreDataFromSheets (papaparse):", error.message || error);
-      // Don't fallback to mock data on generic errors, return null
+      console.error("Error in getLiveScoreDataFromSheets (papaparse fetch/parse):", error.message || error);
       return null;
   }
 }
@@ -300,36 +304,3 @@ function sortStandingsLogic(a: TeamStanding, b: TeamStanding): number {
     // 4. Sort by Name (ascending) as the final tie-breaker
     return a.name.localeCompare(b.name);
 }
-
-// --- Deprecated Function (from previous implementation) ---
-// Keep the old interface and function commented out or remove if no longer needed.
-/*
-export interface MatchData {
-  matchNo: number;
-  time: string;
-  team1: string;
-  team1SetScore: number;
-  team1FinalScore: number; // Now represents current points in live scenario
-  team1PointDiff: number;
-  team2: string;
-  team2SetScore: number;
-  team2FinalScore: number; // Now represents current points in live scenario
-  team2PointDiff: number;
-  status: string;
-}
-
-export async function getMatchDataFromSheets(googleSheetsUrl: string): Promise<MatchData[]> {
-  // This function used to fetch all fixtures. Now deprecated in favor of
-  // getLiveScoreDataFromSheets and getStandingsDataFromSheets.
-  console.warn("getMatchDataFromSheets is deprecated. Using mock data.");
-  return getMockMatchFixtureData(); // Example: return old mock fixture data if needed elsewhere
-}
-
-export function getMockMatchFixtureData(): MatchData[] {
- // Return the old mock fixture data if necessary
- return [
-    { matchNo: 1, time: '4:30 PM', team1: 'Kanthapuram', team1SetScore: 2, team1FinalScore: 25, team1PointDiff: 2, team2: 'Marakkara', team2SetScore: 1, team2FinalScore: 23, team2PointDiff: -2, status: 'Finished' },
-    // ... other matches
-  ];
-}
-*/

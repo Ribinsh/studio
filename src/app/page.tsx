@@ -1,13 +1,12 @@
 
-
 "use client";
 
 import type { LiveMatchScoreData } from '@/services/google-sheets';
-import { getLiveScoreDataFromSheets, getStandingsDataFromSheets, getMockLiveScoreData, getMockStandingsData } from '@/services/google-sheets';
+import { getLiveScoreDataFromSheets, getStandingsDataFromSheets, getMockStandingsData } from '@/services/google-sheets';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, AlertCircleIcon } from 'lucide-react'; // Removed TvIcon as it's not used
+import { TimerIcon, LoaderIcon, UsersIcon, BarChartIcon, AlertCircleIcon } from 'lucide-react';
 import TimeoutModal from '@/components/TimeoutModal';
 import StandingsModal from '@/components/StandingsModal';
 import LiveMatchDisplay from '@/components/LiveMatchDisplay';
@@ -39,17 +38,9 @@ export default function Home() {
 
     // --- Fetch Live Score ---
     try {
-      // Use environment variable or the provided URL. Assuming gid=0 for the live score sheet.
-      const liveScoreSheetGid = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0';
-      const liveScoreDocId = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
-      // Fallback to the user-provided URL ONLY if the env var isn't set.
-      // Make sure the user-provided URL is passed correctly or configure env var.
-      const liveScoreBaseUrl = liveScoreDocId
-        ? `https://docs.google.com/spreadsheets/d/${liveScoreDocId}/export?format=csv&gid=${liveScoreSheetGid}`
-        : 'https://docs.google.com/spreadsheets/d/13q43vurVd8iv0efEXRD7ck88oDDbkTVLHkLAtxQkHUU/export?format=csv&gid=0'; // Defaulting to user's link if env var missing
-
-      console.log("Attempting to fetch live score from:", liveScoreBaseUrl); // Log the URL being fetched
-      const liveData = await getLiveScoreDataFromSheets(liveScoreBaseUrl);
+      console.log("Attempting to fetch live score..."); // Log the URL being fetched
+      // The function now defaults to the correct CSV link internally
+      const liveData = await getLiveScoreDataFromSheets();
 
       if (liveData) {
          console.log("Successfully fetched live data:", liveData);
@@ -254,3 +245,4 @@ export default function Home() {
     </div>
   );
 }
+
