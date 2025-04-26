@@ -89,7 +89,8 @@ body {
   }
 }
 
-/* Optional: Define keyframes for more control over animation */
+/* Remove score bump animation */
+/*
 @layer utilities {
     @keyframes score-bump {
         0%, 100% { transform: scale(1); }
@@ -99,3 +100,4 @@ body {
         animation: score-bump 0.3s ease-out;
     }
 }
+*/
