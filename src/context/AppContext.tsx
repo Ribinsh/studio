@@ -5,7 +5,7 @@ import type React from 'react';
 import { createContext, useState, useEffect, useCallback, useMemo } from 'react';
 import type { LiveMatchScoreData, GroupStandings, TeamStanding } from '@/lib/types';
 import { sortStandingsDisplay } from '@/lib/standings';
-import { useSubscription, useMutation, ApolloError } from '@apollo/client';
+import { useSubscription, useMutation, ApolloError, gql } from '@apollo/client';
 import { SUBSCRIBE_LIVE_MATCH, UPDATE_LIVE_MATCH, CLEAR_LIVE_MATCH, SUBSCRIBE_STANDINGS, UPSERT_STANDINGS } from '@/graphql/operations';
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 
@@ -67,6 +67,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (liveMatchError) {
         // Error already handled by onError callback usually, but log just in case
       console.error("AppContext: Hasura liveMatch subscription error (useEffect check):", liveMatchError);
+      // Set error state if not already set by onError
+      if (!appError) {
+          setAppError(`Live Match Sync Failed: ${liveMatchError.message}`);
+          setLiveMatch(null); // Clear live match on error
+      }
     } else if (liveMatchData && liveMatchData.live_match.length > 0) {
         const rawMatch = liveMatchData.live_match[0];
         // Transform Hasura data (snake_case) to camelCase for LiveMatchScoreData
@@ -84,7 +89,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         // Clear error only if it was related to live match
         if (typeof appError === 'string' && appError.startsWith('Live Match')) {
              setAppError(null);
-        } else if (appError instanceof ApolloError && liveMatchError === appError) {
+        } else if (appError instanceof ApolloError && appError.message.includes('Live Match')) {
              setAppError(null);
         }
     } else if (!liveMatchLoading) {
@@ -95,9 +100,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
              setAppError(null);
          }
     }
-    // Intentionally not including appError in dependency array to avoid loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [liveMatchData, liveMatchLoading, liveMatchError, toast]);
+    // Include appError here cautiously. If it causes loops, refine error clearing logic.
+  }, [liveMatchData, liveMatchLoading, liveMatchError, toast, appError]);
 
 
   // Subscribe to Standings Data
@@ -126,15 +130,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
      if (standingsError) {
        // Error already handled by onError callback usually, but log just in case
        console.error("AppContext: Hasura standings subscription error (useEffect check):", standingsError);
+        // Set error state if not already set by onError
+       if (!appError) {
+          setAppError(`Standings Sync Failed: ${standingsError.message}`);
+          setStandings(null); // Clear standings on error
+       }
      } else if (standingsData && standingsData.standings) {
-        // Process and group standings data
-        const groupA: TeamStanding[] = [];
-        const groupB: TeamStanding[] = [];
+         // Process and group standings data using Maps for deduplication
+         const groupAMap = new Map<string, TeamStanding>();
+         const groupBMap = new Map<string, TeamStanding>();
 
-        standingsData.standings.forEach((rawStanding: any) => {
+         standingsData.standings.forEach((rawStanding: any) => {
            const teamStanding: TeamStanding = {
-               // Assuming primary key is composite (group_key, name) or you have another id
-               // id: rawStanding.id, // Include if you have a simple primary key
+               // Assuming primary key is composite (group_key, name)
+               // No need for separate ID if (group_key, name) is unique
                name: rawStanding.name,
                matchesPlayed: rawStanding.matches_played,
                wins: rawStanding.wins,
@@ -145,34 +154,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
                breakPoints: rawStanding.break_points,
            };
            if (rawStanding.group_key === 'A') {
-               groupA.push(teamStanding);
+               // Use team name as key to automatically handle duplicates
+               groupAMap.set(teamStanding.name, teamStanding);
            } else if (rawStanding.group_key === 'B') {
-               groupB.push(teamStanding);
+               groupBMap.set(teamStanding.name, teamStanding);
            }
-        });
+         });
 
-        // Ensure sorting after grouping
-        setStandings({
-            groupA: sortStandingsDisplay(groupA),
-            groupB: sortStandingsDisplay(groupB),
-        });
+         // Convert Maps back to arrays and sort
+         const groupA = Array.from(groupAMap.values());
+         const groupB = Array.from(groupBMap.values());
+
+         setStandings({
+             groupA: sortStandingsDisplay(groupA),
+             groupB: sortStandingsDisplay(groupB),
+         });
+
          // Clear error only if it was related to standings
          if (typeof appError === 'string' && appError.startsWith('Standings')) {
               setAppError(null);
-         } else if (appError instanceof ApolloError && standingsError === appError) {
+         } else if (appError instanceof ApolloError && appError.message.includes('Standings')) {
               setAppError(null);
          }
      } else if (!standingsLoading) {
-        // Data is empty, but not loading and no error
-        setStandings(null);
+         // Data is empty, but not loading and no error
+         setStandings(null);
          // Clear error only if it was related to standings
           if (typeof appError === 'string' && appError.startsWith('Standings')) {
               setAppError(null);
           }
      }
-      // Intentionally not including appError in dependency array to avoid loops
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-   }, [standingsData, standingsLoading, standingsError, toast]);
+     // Include appError here cautiously. If it causes loops, refine error clearing logic.
+   }, [standingsData, standingsLoading, standingsError, toast, appError]);
 
    // Determine overall loading state
    const isLoading = useMemo(() => isStandingsLoading || isLiveMatchLoading, [isStandingsLoading, isLiveMatchLoading]);
@@ -202,7 +215,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
              // Transform camelCase to snake_case for Hasura mutation input
              const hasuraInput = {
                  // Assuming a fixed ID = 1 for the single live match row
-                 id: 1,
+                 id: scoreData.id || 1, // Use provided ID or default to 1
                  team1: scoreData.team1,
                  team1_set_score: scoreData.team1SetScore,
                  team1_current_points: scoreData.team1CurrentPoints,
@@ -214,7 +227,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
              };
              await updateLiveMatchMutation({
                 variables: { object: hasuraInput },
-                 refetchQueries: [{ query: SUBSCRIBE_LIVE_MATCH }] // Optional: force refetch
+                 // No need for refetchQueries with subscriptions active
+                 // refetchQueries: [{ query: SUBSCRIBE_LIVE_MATCH }]
                 });
              // No toast here, success implied by UI update via subscription
         } catch (error: any) {
@@ -264,7 +278,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
        try {
            await upsertStandingsMutation({
              variables: { objects: hasuraObjects },
-             refetchQueries: [{ query: SUBSCRIBE_STANDINGS }] // Optional: force refetch
+              // No need for refetchQueries with subscriptions active
+             // refetchQueries: [{ query: SUBSCRIBE_STANDINGS }]
             });
            // Toast might be better handled in the admin page after successful mutation call
            // toast({ title: "Success", description: "Standings updated globally." });
@@ -294,3 +309,5 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     </AppContext.Provider>
   );
 };
+
+    
