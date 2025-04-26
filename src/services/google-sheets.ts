@@ -1,4 +1,5 @@
 
+
 import type { GroupStandings, TeamStanding } from '@/lib/types'; // Import necessary types
 import Papa from 'papaparse'; // Import papaparse
 
@@ -52,25 +53,22 @@ export interface LiveMatchScoreData {
 export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: string): Promise<LiveMatchScoreData | null> {
 
    // --- Use the new direct CSV link as the primary fallback ---
+   // Updated URL from the user
    const defaultLiveScoreUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vQuYS75C9qL3p-q4L-PQCEA7kVHzaStGnVUvS0i9Lk4Hs7gtCD5k1SJRbW5xjyVytZN8IWPtk0GOimS/pub?gid=0&single=true&output=csv';
 
    // --- Check for Environment Variables (Optional Override) ---
-   // This part is kept for potential future configuration, but the default is now the direct link.
    const liveScoreDocIdFromEnv = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_DOC_ID;
    const liveScoreSheetGid = process.env.NEXT_PUBLIC_GOOGLE_SHEETS_LIVE_SCORE_GID || '0'; // Default GID if only DOC ID is set
 
    let effectiveUrl: string;
 
    if (liveScoreDocIdFromEnv && liveScoreDocIdFromEnv !== 'YOUR_DOC_ID_HERE') {
-       // Construct URL from environment variables if they are set and valid
        effectiveUrl = `https://docs.google.com/spreadsheets/d/${liveScoreDocIdFromEnv}/export?format=csv&gid=${liveScoreSheetGid}`;
        console.log("Using Google Sheet URL from environment variables:", effectiveUrl);
    } else if (googleSheetsLiveScoreUrl && googleSheetsLiveScoreUrl.startsWith('https')) {
-       // Use the URL passed as argument if provided and looks like a valid URL
        effectiveUrl = googleSheetsLiveScoreUrl;
        console.log("Using URL passed as argument:", effectiveUrl);
    } else {
-       // Fallback to the default direct CSV link
        effectiveUrl = defaultLiveScoreUrl;
        console.log("Using default Google Sheet CSV URL:", effectiveUrl);
    }
@@ -81,7 +79,7 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
 
 
   try {
-      console.log(`Fetching live score from: ${urlWithCacheBuster}`); // Log the URL being fetched
+      console.log(`Fetching live score from: ${urlWithCacheBuster}`);
       const response = await fetch(urlWithCacheBuster, {
           method: 'GET',
           cache: 'no-store', // Ensure fresh data is fetched
@@ -91,53 +89,39 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
           },
       });
 
-      console.log(`Fetch response status: ${response.status}`); // Log status
+      console.log(`Fetch response status: ${response.status}`);
 
       if (!response.ok) {
-           const errorText = await response.text(); // Try to get error text from response
+           const errorText = await response.text();
            console.error(`Failed to fetch live score CSV: ${response.status} ${response.statusText}. Response body: ${errorText}`);
-           return null; // Indicate fetch failure
+           return null;
       }
 
       const csvText = await response.text();
 
       if (!csvText || csvText.trim() === "") {
-           console.warn("Received empty CSV response for live score. Sheet might be empty or cleared.");
-           return null; // No data or empty sheet
+           console.warn("Received empty CSV response for live score.");
+           return null;
        }
 
       // Parse CSV using papaparse
       const parsed = Papa.parse(csvText.trim(), {
-          header: true,       // Treat the first row as headers
-          skipEmptyLines: true // Skip empty lines
+          header: true,
+          skipEmptyLines: true
       });
 
       if (parsed.errors.length > 0) {
           console.error("Error parsing live score CSV with papaparse:", parsed.errors);
-          // Try to log the raw CSV text that caused the error
-          // console.log("Problematic CSV Text:\n", csvText.trim());
+          console.log("Problematic CSV Text:\n", csvText.trim());
           return null;
       }
 
-      // Ensure headers are strings (papaparse might infer types)
-      const headers = parsed.meta.fields as string[];
-      const requiredHeaders = ['Team', 'SetScore', 'CurrentPoints']; // Updated header names from the sheet
-      const missingHeaders = requiredHeaders.filter(h => !headers || !headers.includes(h)); // Added check for headers existence
+      const rows = parsed.data as any[];
 
-      if (missingHeaders.length > 0) {
-          console.error(`Missing required headers in live score CSV: ${missingHeaders.join(', ')}. Found headers: ${headers ? headers.join(', ') : 'None'}`);
-           console.log("Problematic CSV Text:\n", csvText.trim()); // Log CSV if headers missing
-          return null;
-      }
-
-      // Papaparse returns data as an array of objects
-      const rows = parsed.data as any[]; // Use 'any' for flexibility, validate below
-
-      // Expect exactly two rows for the two teams after the header
       if (rows.length < 2) {
-          console.warn(`Live score CSV has only ${rows.length} data rows after header. Expected 2 rows for the two teams.`);
-          console.log("Parsed Rows:", rows); // Log rows for debugging
-          return null;
+           console.warn(`Parsed data has only ${rows.length} rows. Expected at least 2 for the teams.`);
+           console.log("Parsed Rows:", rows);
+           return null;
       }
 
       const team1Data = rows[0];
@@ -146,13 +130,11 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
       // Validate required fields exist and parse them using the correct headers
       const team1 = team1Data['Team']?.trim();
       const team2 = team2Data['Team']?.trim();
-      // Ensure fallback to '0' if values are null/undefined before parsing
       const team1SetScore = parseInt(team1Data['SetScore'] || '0', 10);
       const team2SetScore = parseInt(team2Data['SetScore'] || '0', 10);
       const team1CurrentPoints = parseInt(team1Data['CurrentPoints'] || '0', 10);
       const team2CurrentPoints = parseInt(team2Data['CurrentPoints'] || '0', 10);
 
-      // Basic validation
       if (!team1 || !team2) {
           console.error("Missing team names in parsed live score data.");
           console.log("Team1 Data:", team1Data);
@@ -166,9 +148,8 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
           return null;
       }
 
-      // Status is optional. Check if 'Status' header exists and use value from first row if present.
       let status = 'Live'; // Default status
-      if (headers.includes('Status') && team1Data['Status'] && team1Data['Status'].trim() !== '') {
+      if (parsed.meta.fields?.includes('Status') && team1Data['Status'] && team1Data['Status'].trim() !== '') {
           status = team1Data['Status'].trim();
       }
 
@@ -186,7 +167,6 @@ export async function getLiveScoreDataFromSheets(googleSheetsLiveScoreUrl?: stri
        return liveMatchData;
 
   } catch (error: any) {
-      // Catch network errors or other exceptions during fetch/parsing
       console.error("Error in getLiveScoreDataFromSheets (papaparse fetch/parse):", error.message || error);
       return null;
   }
