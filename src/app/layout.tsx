@@ -3,9 +3,7 @@ import type {Metadata} from 'next';
 import {Geist, Geist_Mono} from 'next/font/google';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster" // Import Toaster
-import { AppProvider } from '@/context/AppContext'; // Import AppProvider
-import { ApolloProvider } from '@apollo/client'; // Import ApolloProvider
-import client from '@/lib/apollo-client'; // Import configured Apollo Client
+import Providers from '@/components/Providers'; // Import the new Providers component
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -30,12 +28,10 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-       <ApolloProvider client={client}> {/* Wrap with ApolloProvider */}
-         <AppProvider> {/* Wrap children with AppProvider */}
+       <Providers> {/* Use the Providers component */}
            {children}
            <Toaster /> {/* Add Toaster component */}
-         </AppProvider>
-       </ApolloProvider>
+       </Providers>
       </body>
     </html>
   );
