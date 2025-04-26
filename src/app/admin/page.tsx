@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import type { ChangeEvent, FormEvent } from 'react';
@@ -15,8 +14,10 @@ import type { LiveMatchScoreData, TeamStanding, GroupStandings } from '@/lib/typ
 import { useToast } from '@/hooks/use-toast';
 // Removed Separator import as it's no longer needed
 
-// Define Match Types
-const matchTypes: LiveMatchScoreData['matchType'][] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final', ''];
+// Define Match Types (excluding empty string here)
+const matchTypes: Exclude<LiveMatchScoreData['matchType'], ''>[] = ['Group Stage', 'Qualifier', 'Exhibition', 'Semi-Final', 'Final'];
+// Define a unique value for the "None" option to avoid empty string value in SelectItem
+const NONE_MATCH_TYPE_VALUE = "__NONE__";
 
 export default function AdminPage() {
   // Removed addTeam from context destructuring
@@ -76,9 +77,11 @@ export default function AdminPage() {
    };
 
     const handleMatchTypeChange = (value: string) => {
+        // Map the special value back to empty string for state
+        const actualValue = value === NONE_MATCH_TYPE_VALUE ? '' : value;
         setLiveScoreData(prev => ({
-        ...prev,
-        matchType: value as LiveMatchScoreData['matchType'], // Cast the value
+          ...prev,
+          matchType: actualValue as LiveMatchScoreData['matchType'], // Cast the value
         }));
     };
 
@@ -225,16 +228,30 @@ export default function AdminPage() {
                      <Input id="status" name="status" type="text" placeholder="e.g., Live, Timeout, Set Finished" value={liveScoreData.status || ''} onChange={handleLiveScoreChange} />
                  </div>
                  <div>
-                    <Label htmlFor="matchTypeSelect">Match Type</Label>
-                     <Select name="matchType" value={liveScoreData.matchType || ''} onValueChange={handleMatchTypeChange}>
-                          <SelectTrigger id="matchTypeSelect">
-                             <SelectValue placeholder="Select Match Type" />
-                          </SelectTrigger>
-                          <SelectContent>
-                             {matchTypes.map(type => <SelectItem key={type} value={type || ''}>{type || 'None'}</SelectItem>)}
-                          </SelectContent>
+                     <Label htmlFor="matchTypeSelect">Match Type</Label>
+                     {/* Map empty string state to the special value for the Select's value prop */}
+                     <Select
+                        name="matchType"
+                        value={liveScoreData.matchType === '' ? NONE_MATCH_TYPE_VALUE : liveScoreData.matchType || NONE_MATCH_TYPE_VALUE}
+                        onValueChange={handleMatchTypeChange}
+                      >
+                        <SelectTrigger id="matchTypeSelect">
+                            <SelectValue placeholder="Select Match Type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {/* Add the "None" option explicitly with the special value */}
+                            <SelectItem key={NONE_MATCH_TYPE_VALUE} value={NONE_MATCH_TYPE_VALUE}>
+                                None
+                            </SelectItem>
+                            {/* Map the other types */}
+                            {matchTypes.map(type => (
+                                <SelectItem key={type} value={type}>
+                                    {type}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
                      </Select>
-                </div>
+                 </div>
              </div>
 
 
@@ -308,4 +325,3 @@ export default function AdminPage() {
     </div>
   );
 }
-
